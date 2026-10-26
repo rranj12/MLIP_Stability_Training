@@ -1,0 +1,22 @@
+# CRMSE baseline, settings from Tzivrailis et al. (arXiv:2606.31660), Sec. III B and App. A, D, E.
+# The paper's step sizes are in its own reduced units with per-atom preconditioning (App. B);
+# step_size below must be re-tuned for eV/Å units in the pilot.
+
+includes:
+  - ../margin/base.yml         # shares data / pretrained / simulate settings
+
+crmse:
+  lam: 0.015
+  epochs: 200                  # 500 for the 200-frame low-data setting
+  batch_size: 16
+  buffer_size: 1000
+  ula_steps_per_epoch: 200     # K
+  step_size: null              # TODO: tune; paper uses 4e-4 (reduced units)
+  seed_from: failed_rollout    # buffer seeded from a long failed simulation of the pretrained model
+
+optim:
+  name: Adam
+  lr: 1.0e-4
+  reuse_stage_a_state: true
+
+results_dir: results/crmse

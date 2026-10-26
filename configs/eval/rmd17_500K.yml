@@ -1,0 +1,31 @@
+# One evaluation protocol for every method (explainer Sec. 9.1). This matches
+# StABlE's own simulate.yml (Langevin, 500 K, 0.5 Å, 256 replicas), but we run it
+# through scripts/evaluate.py so all checkpoints go through identical code.
+
+data:
+  src: data/processed
+  name: md17
+  size: 1k
+  start_split: test            # starting frames never seen in training
+
+simulate:
+  n_replicas: 256
+  temperature: 500.0           # also 350 and 700 K (unseen during training)
+  integrator: Langevin
+  timestep_fs: 0.5
+  friction_per_ps: 0.1
+  length_ps: 300               # 1000 for headline configurations if compute allows
+  save_every_fs: 50
+
+criteria:
+  bond_threshold: 0.5          # Å; stricter than training's 0.25 Å
+  nonbonded_tol: 0.5           # Å below the closest training distance for that pair
+
+observables:
+  rdf_bins: {start: 0.0, stop: 10.0, step: 0.02}
+  dihedrals:                   # atom indices per molecule; fill in after inspecting the structure
+    ethanol: []                # TODO: H-C-C-O (CRMSE Fig. 11)
+    aspirin: []                # TODO: ring-ester C-O-C=O (CRMSE Fig. 13)
+
+accuracy:
+  split: test                  # 1,000 official rMD17 test frames

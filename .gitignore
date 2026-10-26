@@ -1,0 +1,26 @@
+# data and outputs live locally / in S3, never in git
+data/raw/
+data/processed/
+results/
+wandb/
+runs/
+*.lmdb
+*.lmdb-lock
+*.npz
+*.npy
+*.pt
+*.pth
+
+# python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.ipynb_checkpoints/
+.venv/
+venv/
+
+# os / editors
+.DS_Store
+.vscode/
+.idea/

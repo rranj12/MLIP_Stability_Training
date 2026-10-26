@@ -1,0 +1,5 @@
+includes:
+  - base.yml
+
+molecule: aspirin
+model: schnet

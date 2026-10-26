@@ -1,0 +1,42 @@
+# StABlE's env.yml (pinned versions) plus this package and analysis tools.
+#   mamba env create -f environment.yml && conda activate mlipstab
+name: mlipstab
+channels:
+  - pytorch
+  - nvidia
+  - conda-forge
+  - pyg
+  - defaults
+dependencies:
+  - python=3.10.*
+  - pytorch-cuda=12.1
+  - pytorch=2.3.0
+  - pytorch-scatter
+  - pytorch-sparse
+  - pytorch-cluster
+  - ase
+  - e3nn>=0.5
+  - numpy>=1.25.0
+  - pymatgen>=2023.10.3
+  - numba
+  - orjson
+  - pytest
+  - python-lmdb
+  - pyyaml
+  - submitit
+  - tensorboard
+  - tqdm
+  - wandb
+  - matplotlib
+  - pandas
+  - scipy
+  - pip
+  - pip:
+      - torch_geometric
+      - scikit-learn
+      - gsd
+      - nequip
+      - lifelines
+      # - mace-torch        # optional third architecture; check torch compatibility first
+      - -e third_party/StABlE-Training
+      - -e .

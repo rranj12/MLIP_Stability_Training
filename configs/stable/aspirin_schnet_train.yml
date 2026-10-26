@@ -1,0 +1,17 @@
+# StABlE baseline on rMD17, run unmodified from the submodule (scripts/run_stable.sh
+# runs from third_party/StABlE-Training, so relative paths below are relative to it).
+# Everything not overridden keeps the authors' settings: SGD lr 1e-3, clip 1.0,
+# Nose-Hoover during training, learning triggered at 75% unstable, E/F weight 10.
+
+includes:
+  - configs/stable_training/md17/train.yml
+
+src: ../../data/processed
+model_dir: ../../results/checkpoints/qm_pretrained
+log_dir: ../../results/stable
+molecule: aspirin
+model: schnet
+size: 1k
+# Reference h(r) comes from <src>/md17/<mol>/10k/train. prepare_rmd17.py --reference same
+# makes that the same 950 training frames (main baseline); --reference published
+# reproduces StABlE's extra-data setting (secondary baseline).
