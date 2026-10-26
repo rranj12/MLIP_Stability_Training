@@ -1,6 +1,6 @@
 # Stability-Aware MLIP Training
 
-CS230 project. Neural-network interatomic potentials can match DFT on test data
+Neural-network interatomic potentials can match DFT on test data
 and still blow up in molecular dynamics. We find the failures a model produces in
 its own simulations and raise their energy with a **margin loss** applied only to
 physically flagged states, then compare head-to-head with the two closest published
