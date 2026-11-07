@@ -32,7 +32,10 @@ stage_b:                       # fields of mlipstab.train.stage_b.StageBConfig
   lam: 0.1
   margin_kT: 10.0
   temperature: 500.0
-  stop_grad_anchor: true
+  stop_grad_anchor: false      # true only as an ablation: it pushes a global energy offset up
+  anchor: rollout              # rollout | counterfactual (bond reset to b0) | labeled (nearest training frame)
+  restore_weight: 0.0          # bond-restoring force hinge (double backprop); try 0.1 once the base runs
+  restore_scale: 1.0           # eV/Å
   buffer_capacity: 2000
   guardrail_rel: 0.10
   stop_fail_frac: 0.05

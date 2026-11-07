@@ -8,18 +8,22 @@ fixes, **StABlE** (observable matching) and **CRMSE** (contrastive maximum likel
 under one MD protocol on rMD17 (and MD22).
 
 ```
-L = L_EF + λ · mean softplus( m − [U(x_fail) − sg(U(x_anchor))] )
+L = L_EF + λ · mean softplus( m − [U(x_fail) − U(x_anchor)] )
 ```
 
-`x_fail` fails a bond-deviation check during a Langevin rollout, `x_anchor` is the
-same replica a few hundred steps earlier, `m` is a margin in units of k_BT, and
-`sg` is a stop-gradient. See [docs/design_notes.md](docs/design_notes.md).
+`x_fail` fails a bond-deviation check during a Langevin rollout, `x_anchor` is by
+default the same replica a few hundred steps earlier, and `m` is a margin in units of
+k_BT. Gradients flow through both energies, so a global energy offset cancels. Both
+snapshots are detached from the rollout. Optional: a counterfactual anchor (the broken
+bond reset to its equilibrium length), a labeled anchor (nearest training frame), and a
+bond-restoring force hinge. See [docs/design_notes.md](docs/design_notes.md).
 
 ## Status
 
 | Piece | State |
 |---|---|
 | Margin loss, localized variant, CRMSE term + ULA step | implemented, unit-tested |
+| Anchor options (rollout / counterfactual / labeled), bond-restoring force hinge | implemented, unit-tested |
 | Failure detection (bonds, non-bonded collisions), pair extraction, replay buffer | implemented, unit-tested |
 | Stage B loop (simulate → detect → buffer → learn → guardrail) | implemented, unit-tested with toy callables |
 | Stability time, Kaplan–Meier, h(r), dihedral free energy | implemented, unit-tested |
@@ -38,7 +42,7 @@ configs/
   stable/        StABlE baseline: includes StABlE's own configs, overrides paths only
   eval/          one evaluation protocol for every method
 src/mlipstab/
-  losses/        margin.py, crmse.py
+  losses/        margin.py, anchors.py, crmse.py
   train/         stage_b.py (backend-agnostic loop)
   data/          rmd17.py (download, splits), bonds.py (bond list, collision floors)
   eval/          stability.py (tau, Kaplan-Meier), observables.py (h(r), dihedrals)

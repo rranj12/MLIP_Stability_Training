@@ -3,7 +3,7 @@ import math
 import torch
 
 from mlipstab.losses.crmse import contrastive_term, ula_step
-from mlipstab.losses.margin import local_energy, local_mask, margin_loss
+from mlipstab.losses.margin import bond_restoring_loss, local_energy, local_mask, margin_loss
 
 
 def test_margin_loss_value_at_margin_is_log2():
@@ -17,19 +17,46 @@ def test_margin_loss_saturates_above_margin():
     assert loss.item() < 1e-4
 
 
-def test_stop_grad_anchor_blocks_anchor_gradient():
-    e_fail = torch.tensor([0.0], requires_grad=True)
-    e_anchor = torch.tensor([0.0], requires_grad=True)
-    margin_loss(e_fail, e_anchor, margin=0.43).backward()
-    assert e_fail.grad.item() < 0  # descent raises the failure energy
-    assert e_anchor.grad is None
+def _offset_grad(stop_grad_anchor):
+    # U(x) = a * |x|^2 + c: c shifts every energy and changes no force.
+    a = torch.tensor(0.0, requires_grad=True)
+    c = torch.tensor(0.0, requires_grad=True)
+    U = lambda x: a * (x ** 2).sum(dim=(1, 2)) + c
+    x_fail, x_anchor = torch.ones(2, 3, 3), torch.zeros(2, 3, 3)
+    margin_loss(U(x_fail), U(x_anchor), 0.43, stop_grad_anchor).backward()
+    return a.grad.item(), c.grad.item()
 
 
-def test_free_anchor_gets_gradient_in_ablation():
-    e_fail = torch.tensor([0.0], requires_grad=True)
-    e_anchor = torch.tensor([0.0], requires_grad=True)
-    margin_loss(e_fail, e_anchor, margin=0.43, stop_grad_anchor=False).backward()
-    assert e_anchor.grad.item() > 0  # descent would lower the anchor: the failure mode sg() prevents
+def test_default_free_anchor_gives_offset_zero_gradient():
+    a_grad, c_grad = _offset_grad(stop_grad_anchor=False)
+    assert a_grad < 0  # descent raises the failure relative to the anchor
+    assert c_grad == 0.0  # common offset cancels
+
+
+def test_stop_grad_ablation_leaks_into_offset():
+    _, c_grad = _offset_grad(stop_grad_anchor=True)
+    assert c_grad < 0  # descent would raise every energy: the bias the free anchor avoids
+
+
+def _bond_energy(slope):
+    # U = slope * r_01: slope > 0 restores a stretched bond, slope < 0 pulls it apart.
+    return lambda x: slope * (x[:, 1] - x[:, 0]).norm(dim=-1)
+
+
+def test_bond_restoring_loss_penalizes_wrong_sign_force():
+    x = torch.tensor([[[0.0, 0, 0], [1.5, 0, 0]]])  # stretched: r = 1.5 > b0 = 1.0
+    pair, b0 = torch.tensor([[0, 1]]), torch.tensor([1.0])
+    good = bond_restoring_loss(x, _bond_energy(5.0), pair, b0)
+    bad = bond_restoring_loss(x, _bond_energy(-5.0), pair, b0)
+    assert good.item() < 0.01 < 4.9 < bad.item()
+
+
+def test_bond_restoring_loss_is_differentiable_in_params():
+    slope = torch.tensor(-1.0, requires_grad=True)
+    x = torch.tensor([[[0.0, 0, 0], [1.5, 0, 0]]])
+    bond_restoring_loss(x, lambda y: slope * (y[:, 1] - y[:, 0]).norm(dim=-1),
+                        torch.tensor([[0, 1]]), torch.tensor([1.0])).backward()
+    assert slope.grad.item() < 0  # descent increases the slope toward a restoring force
 
 
 def test_local_energy_and_mask():

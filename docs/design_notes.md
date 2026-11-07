@@ -54,11 +54,41 @@ Implications:
   At smaller thresholds a 10–20 k_BT margin would exceed it and bias the surface.
 - The non-bonded collision floors had 0 false positives on the same test frames.
 
-## Anchor stop-gradient
+## Anchor: no stop-gradient (changed from the first draft)
 
-`margin_loss(..., stop_grad_anchor=True)` is the default. Without it the model can
-meet the margin by lowering U(x₀), an unlabeled state, which digs a new spurious
-minimum next to the basin. `stop_grad_anchor: false` is an ablation.
+The first draft detached U(x₀). That makes the penalty gradient σ(m − Δ)·∂U(x_fail)/∂θ
+alone, which includes every direction that raises *all* energies. Every architecture
+we use has one: the readout bias / per-element energy shift (SchNet atomref, NequIP
+per-species shift, MACE E0s). The forward gap Δ is unaffected by that offset, so the
+push never satisfies the loss and never stops. Only the weak energy term of L_EF
+(λ_E:λ_F ≈ 1:100–1:1000) resists it, so expect a systematic upward energy bias,
+the same symptom CRMSE reports on aspirin.
+
+Default now: gradients flow through both energies (`stop_grad_anchor: false`), so
+the gradient is σ(m − Δ)·[∂U(x_fail)/∂θ − ∂U(x₀)/∂θ] and common offsets cancel.
+Both snapshots are still detached from the rollout. The worry that motivated the
+stop-gradient, the model lowering U(x₀), is small: x₀ sits near the training data,
+where L_EF pins forces with 3N labels per frame. `tests/test_losses.py` checks that
+an offset parameter gets exactly zero gradient by default and a nonzero one under
+the ablation. Keep `stop_grad_anchor: true` as an ablation; it should show the bias.
+
+## Anchor choice and forces (`stage_b.anchor`, `stage_b.restore_weight`)
+
+- **Energy ordering of rollout anchors is uncertain.** x₀ is 250 fs earlier and also
+  differs in torsions, angles and other bonds. Aspirin's thermal energy fluctuation at
+  500 K is ≈ √(N_df/2)·k_BT ≈ 5 kcal/mol, about half the 10 k_BT margin.
+  - `anchor: counterfactual` uses x_fail with only its most-deviated bond moved back to
+    b0, so the pair differs in one coordinate whose ordering is known.
+  - `anchor: labeled` uses the nearest training frame (distance-matrix L2), whose
+    energy and forces L_EF holds in place, so the margin can't be met by lowering it.
+  - Localized energies (`localize.enabled`) also remove most unrelated thermal noise.
+- **Energy values at two points aren't a restoring force.** MD follows −∇U, and a
+  narrow spike at x_fail would satisfy the margin without redirecting trajectories.
+  `restore_weight > 0` adds a hinge requiring ∂U/∂r_ij > 0 along a stretched flagged
+  bond (< 0 if compressed). It needs double backprop on buffer frames only.
+  `extract_failure_pairs` already takes the *first* threshold crossing rather than the
+  collapsed end state. The energy scan along a stretched C–H bond (planned figure)
+  is the diagnostic for wall vs. spike.
 
 ## CRMSE reimplementation notes
 

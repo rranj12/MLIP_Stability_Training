@@ -81,3 +81,27 @@ def test_stage_b_guardrail_restores_weights():
                        ef_loss_fn=lambda m, b: torch.zeros(()),
                        val_force_mae_fn=lambda m: next(maes), log=lambda *_: None)
     assert hist[-1]["guardrail_tripped"] and model.a.item() == 0.0
+
+
+def test_stage_b_runs_with_counterfactual_anchor_and_restoring_hinge():
+    from mlipstab.losses.anchors import make_anchor_fn
+
+    model = Toy()
+    opt = torch.optim.Adam(model.parameters(), lr=0.05)
+    bonds, b0 = torch.tensor([[0, 1]]), torch.tensor([1.0])
+    x_fail = torch.tensor([[[0.0, 0, 0], [1.6, 0, 0]]])
+    pushed = {}
+
+    def anchor_fn(xf, xa):
+        pushed["anchor"] = make_anchor_fn("counterfactual", bonds, b0)(xf, xa)
+        return pushed["anchor"]
+
+    cfg = StageBConfig(n_cycles=1, steps_per_cycle=20, restore_weight=0.1)
+    hist = run_stage_b(model, opt, cfg,
+                       simulate_fn=lambda m: (x_fail, torch.zeros_like(x_fail), 0.5),
+                       energy_fn=lambda m, x: m.a * (x ** 2).sum(dim=(1, 2)),
+                       ef_loss_fn=lambda m, b: torch.zeros(()),
+                       val_force_mae_fn=lambda m: 1.0, anchor_fn=anchor_fn,
+                       bonds=bonds, b0=b0, log=lambda *_: None)
+    assert torch.isclose((pushed["anchor"][0, 1] - pushed["anchor"][0, 0]).norm(), torch.tensor(1.0))
+    assert model.a.item() > 0 and hist[0]["steps"] >= 1

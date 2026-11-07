@@ -13,6 +13,11 @@ def bond_deviation(pos, bonds, b0):
     return (_pair_dist(pos, bonds) - b0).abs().amax(dim=-1)
 
 
+def worst_bond(pos, bonds, b0):
+    """Index into `bonds` of the most deviated bond. pos (..., N, 3) -> (...) long."""
+    return (_pair_dist(pos, bonds) - b0).abs().argmax(dim=-1)
+
+
 def nonbonded_collision(pos, pairs, floor):
     """True where any non-bonded pair is closer than its floor. pos (..., N, 3) -> (...)."""
     return (_pair_dist(pos, pairs) < floor).any(dim=-1)

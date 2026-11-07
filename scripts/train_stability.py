@@ -75,6 +75,9 @@ def main():
         simulate_fn=make_simulate_fn(cfg, calculator),
         energy_fn=make_energy_fn(calculator),
         ef_loss_fn=ef_loss_fn, val_force_mae_fn=val_force_mae_fn,
+        # TODO: bonds, b0 = mlipstab.data.bonds.bond_list(z, train positions) as tensors;
+        # anchor_fn = mlipstab.losses.anchors.make_anchor_fn(cfg["stage_b"]["anchor"], bonds, b0, train_frames)
+        anchor_fn=None, bonds=None, b0=None,
     )
     # TODO: save model checkpoint + history under cfg["results_dir"].
 

@@ -10,6 +10,10 @@ the MDsim glue.
     energy_fn(model, x)           -> (B,) energies in eV for positions x (B,N,3)
     ef_loss_fn(model, batch_size) -> scalar energy/force loss on a labeled batch
     val_force_mae_fn(model)       -> float, validation force MAE (guardrail)
+
+Optional:
+    anchor_fn(x_fail, x_anchor)   -> replacement anchors (see losses/anchors.py)
+    bonds, b0                     -> bond list + lengths, needed when restore_weight > 0
 """
 
 import copy
@@ -18,7 +22,8 @@ from dataclasses import dataclass
 import torch
 
 from mlipstab.buffer import FailureBuffer
-from mlipstab.losses.margin import margin_loss
+from mlipstab.detect import worst_bond
+from mlipstab.losses.margin import bond_restoring_loss, margin_loss
 from mlipstab.units import kT
 
 
@@ -31,7 +36,10 @@ class StageBConfig:
     lam: float = 0.1
     margin_kT: float = 10.0
     temperature: float = 500.0
-    stop_grad_anchor: bool = True
+    stop_grad_anchor: bool = False  # True only as an ablation (leaks into a global energy offset)
+    anchor: str = "rollout"  # rollout | counterfactual | labeled (losses/anchors.py)
+    restore_weight: float = 0.0  # weight of the bond-restoring force hinge; 0 = off
+    restore_scale: float = 1.0  # eV/Å
     buffer_capacity: int = 2000
     stab_loss_tol: float = 1e-3  # end the learning phase early once failures are suppressed
     guardrail_rel: float = 0.10  # stop if val force MAE rises > 10% over Stage A
@@ -41,7 +49,9 @@ class StageBConfig:
 
 
 def run_stage_b(model, optimizer, cfg, simulate_fn, energy_fn, ef_loss_fn,
-                val_force_mae_fn, log=print):
+                val_force_mae_fn, anchor_fn=None, bonds=None, b0=None, log=print):
+    if cfg.restore_weight > 0 and bonds is None:
+        raise ValueError("restore_weight > 0 needs bonds and b0")
     buffer = FailureBuffer(cfg.buffer_capacity)
     margin = cfg.margin_kT * kT(cfg.temperature)
     base_mae = val_force_mae_fn(model)
@@ -50,6 +60,8 @@ def run_stage_b(model, optimizer, cfg, simulate_fn, energy_fn, ef_loss_fn,
     for cycle in range(cfg.n_cycles):
         x_fail, x_anchor, fail_frac = simulate_fn(model)
         if x_fail.shape[0] > 0:
+            if anchor_fn is not None:
+                x_anchor = anchor_fn(x_fail, x_anchor)
             buffer.push(x_fail, x_anchor, cycle=cycle)
         record = {"cycle": cycle, "fail_frac": fail_frac, "buffer": len(buffer)}
         history.append(record)
@@ -71,6 +83,10 @@ def run_stage_b(model, optimizer, cfg, simulate_fn, energy_fn, ef_loss_fn,
                 e_anchor = energy_fn(model, xa)
             l_stab = margin_loss(e_fail, e_anchor, margin, cfg.stop_grad_anchor)
             loss = ef_loss_fn(model, cfg.batch_labeled) + cfg.lam * l_stab
+            if cfg.restore_weight > 0:
+                k = worst_bond(xf, bonds, b0)
+                loss = loss + cfg.restore_weight * bond_restoring_loss(
+                    xf, lambda x: energy_fn(model, x), bonds[k], b0[k], cfg.restore_scale)
             optimizer.zero_grad()
             loss.backward()
             torch.nn.utils.clip_grad_norm_(model.parameters(), cfg.grad_clip)
