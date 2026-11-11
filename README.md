@@ -30,8 +30,9 @@ bond-restoring force hinge. See [docs/design_notes.md](docs/design_notes.md).
 | rMD17 download + splits | implemented, checked on real ethanol data |
 | rMD17 → StABlE LMDB layout (`scripts/prepare_rmd17.py`) | implemented, needs a run in the full env |
 | Pretraining / StABlE baseline wrappers | thin wrappers around the submodule |
-| MDsim glue for our Stage B, CRMSE loop, evaluation harness | `TODO` stubs with pointers to the StABlE code to reuse |
-| NequIP rMD17 pretraining config, MACE | to add in the pilot |
+| MDsim glue (`mlipstab.mdsim_backend`), Stage B and CRMSE scripts, evaluation harness | implemented; loops unit-tested and smoke-tested with a toy model, not yet run against real SchNet/NequIP checkpoints on a GPU |
+| NequIP rMD17 pretraining (`scripts/pretrain.sh nequip <mol>`) | implemented from StABlE's MD17 NequIP configs, not yet run |
+| MACE, analysis scripts | to add |
 
 ## Layout
 

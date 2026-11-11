@@ -23,9 +23,16 @@ criteria:
 
 observables:
   rdf_bins: {start: 0.0, stop: 10.0, step: 0.02}
-  dihedrals:                   # atom indices per molecule; fill in after inspecting the structure
-    ethanol: []                # TODO: H-C-C-O (CRMSE Fig. 11)
-    aspirin: []                # TODO: ring-ester C-O-C=O (CRMSE Fig. 13)
+  dihedrals:                   # 0-based atom indices in rMD17 order, from the training-frame bond graph
+    ethanol: [5, 1, 0, 2]      # H(methyl)-C-C-O (CRMSE Fig. 11)
+    aspirin: [6, 12, 11, 8]    # ring C-O-C=O of the ester (CRMSE Fig. 13)
+
+pretrained:
+  dir: results/checkpoints/qm_pretrained   # Stage A run: architecture + default weights
+
+nve:                           # short NVE runs for the energy-drift metric
+  n_replicas: 16
+  length_ps: 10
 
 accuracy:
   split: test                  # 1,000 official rMD17 test frames
