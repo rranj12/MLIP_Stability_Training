@@ -28,12 +28,17 @@ Everything here is one molecule, one architecture, one seed, 100 ps. Treat it as
 On the short-schedule model (the one with real instability), Stage B with the margin loss cut failures
 within 100 ps from 66/256 to 41/256 (λ = 0.0005) and to 6/256 (λ = 0.005), with test force MAE unchanged
 (53.3 → 52.0 and 53.0 meV/Å). Two-proportion z-test against the standard-loss model: p = 0.007 and
-p < 1e-10. On the long-schedule model, which fails 8/256 to begin with, the margin loss changed nothing
+p < 1e-10 (against the control below: p = 0.11 and p < 1e-10). On the long-schedule model, which fails 8/256 to begin with, the margin loss changed nothing
 (8 and 9 failures) and λ = 0.005 cost 11% in force MAE.
 
-Not yet ruled out: Stage B also adds 1,500 ordinary gradient steps to an underfit model. A control with
-the margin term off (λ = 0, same steps) is `p5_control_lam0` in `milestone.py`; it appears in the table
-once it has been fetched. Single seed, and all runs share the same 256 starting frames.
+**Control.** Stage B also adds 1,500 ordinary gradient steps to an underfit model, so we ran the same
+Stage B with the margin term off (λ = 0). It leaves 55/256 failures: not distinguishable from the
+standard-loss model's 66 (p = 0.25), and far above the 6 with λ = 0.005 (p < 1e-10). In its training
+rollouts the failing fraction did not fall (5.5%, 10.2%, 11.7% per cycle; with λ = 0.005: 8.6%, 2.3%,
+2.3%). So the improvement at λ = 0.005 comes from the margin term, not from the extra training. The
+smaller weight is weaker evidence: 41 failures against the control's 55 is p = 0.11.
+
+Single seed, and all runs share the same 256 starting frames.
 
 ## Why the converged model shows no difference (low signal, not a null result)
 
