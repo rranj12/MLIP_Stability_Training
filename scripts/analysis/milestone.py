@@ -32,6 +32,8 @@ LONG = "long schedule (converged, patience 50)"         # stopped at epoch 3502
 # Two tags say "p5" but ran on the patience-50 checkpoint (launched after it replaced the link).
 RUNS = {
     "p5_standard": (SHORT, "standard", None, "pretrained_schnet_ethanol_100ps", None),
+    # control: the same Stage B fine-tuning with the margin term switched off
+    "p5_control_lam0": (SHORT, "control", 0.0, "margin_p5v2_lam0_100ps", "margin_p5_lam0"),
     "p5_margin_lam0.0005": (SHORT, "margin", 0.0005, "margin_p5v2_lam0005_100ps", "margin_p5_lam0005"),
     "p5_margin_lam0.005": (SHORT, "margin", 0.005, "margin_p5v2_lam005_100ps", "margin_p5_lam005"),
     "p50_standard": (LONG, "standard", None, "pretrained_schnet_ethanol_p50_100ps", None),
@@ -39,7 +41,7 @@ RUNS = {
     "p50_margin_lam0.005": (LONG, "margin", 0.005, "margin_p50_lam005_g15_100ps", "margin_p50_lam005_g15"),
 }
 # Reference palette: categorical slots 1-2, fixed per loss (never per rank).
-COLOR = {"standard": "#2a78d6", "margin": "#eb6834"}
+COLOR = {"standard": "#2a78d6", "margin": "#eb6834", "control": "#8a8984"}
 SURFACE, INK, MUTED, GRID = "#fcfcfb", "#0b0b0b", "#52514e", "#e4e3df"
 
 
@@ -81,7 +83,9 @@ def load():
 
 
 def label(r):
-    return "Standard loss" if r["loss"] == "standard" else f"Margin loss (λ = {r['lam']:g})"
+    if r["loss"] == "margin":
+        return f"Margin loss (λ = {r['lam']:g})"
+    return {"standard": "Standard loss", "control": "Fine-tuning control (λ = 0)"}[r["loss"]]
 
 
 def table(runs):
@@ -123,7 +127,7 @@ def plot():
     figs.mkdir(parents=True, exist_ok=True)
     runs = load()
     scheds = [SHORT, LONG]
-    dash = {None: "-", 0.0005: "--", 0.005: "-"}
+    dash = {None: "-", 0.0: ":", 0.0005: "--", 0.005: "-"}
 
     # 1. Stage A loss curves (parsed from the pretraining logs; one schedule per line)
     fig, axes = plt.subplots(1, 2, figsize=(9, 3.2))
@@ -168,7 +172,7 @@ def plot():
     fig, axes = plt.subplots(1, 2, figsize=(9, 3.2))
     for r in (r for r in runs.values() if r["hist"]):
         h = r["hist"]
-        kw = dict(color=COLOR["margin"] if r["sched"] == SHORT else "#8a8984", ls=dash[r["lam"]], lw=2,
+        kw = dict(color=COLOR[r["loss"]] if r["sched"] == SHORT else "#b9b8b2", ls=dash[r["lam"]], lw=2,
                   marker="o", ms=5, label=f"{r['sched'].split(' (')[0]}, λ = {r['lam']:g}")
         axes[0].plot([c["cycle"] for c in h], [100 * c["fail_frac"] for c in h], **kw)
         v = [c for c in h if "val_force_mae" in c]
@@ -185,7 +189,7 @@ def plot():
 
     # 4. Standard vs margin loss: failures within 100 ps, and force error
     fig, axes = plt.subplots(1, 2, figsize=(9, 3.2))
-    names = [f"{r['sched'].split(' (')[0]}\n{'standard' if r['loss'] == 'standard' else 'margin λ=%g' % r['lam']}"
+    names = [f"{r['sched'].split()[0]}\n{'standard' if r['loss'] == 'standard' else 'λ = %g' % r['lam']}"
              for r in runs.values()]
     x = np.arange(len(runs))
     colors = [COLOR[r["loss"]] for r in runs.values()]
@@ -194,9 +198,9 @@ def plot():
         ax.bar(x, vals, width=0.6, color=colors)
         for xi, v in zip(x, vals):
             ax.text(xi, v, fmt.format(v), ha="center", va="bottom", color=INK, fontsize=8)
-        ax.set_xticks(x, names, fontsize=7)
-    style(axes[0], "", "replicas failed within 100 ps (%)", "Instability (256 replicas, 500 K, 0.5 Å)")
-    style(axes[1], "", "test force MAE (meV/Å)", "Accuracy (1,000 rMD17 test frames)")
+        ax.set_xticks(x, names, fontsize=8)
+    style(axes[0], "Stage A schedule / margin weight λ", "replicas failed within 100 ps (%)", "Instability (256 replicas, 500 K, 0.5 Å)")
+    style(axes[1], "Stage A schedule / margin weight λ", "test force MAE (meV/Å)", "Accuracy (1,000 rMD17 test frames)")
     for ax in axes:
         ax.grid(axis="x", visible=False)
     fig.tight_layout()

@@ -1,0 +1,20 @@
+{
+ "energy_mae_kcal_mol": 0.46331120735492703,
+ "force_mae_kcal_mol_A": 1.222397839994405,
+ "temperature": 500.0,
+ "checkpoint": "/vol/results/margin_p5_lam005/ethanol_schnet_seed0/ckpt.pt",
+ "combined": {
+  "median_tau_ps": null,
+  "mean_tau_ps": 98.52656249999998,
+  "frac_stable_100ps": 0.9765625
+ },
+ "bond_only": {
+  "median_tau_ps": null,
+  "mean_tau_ps": 98.52656249999998,
+  "frac_stable_100ps": 0.9765625
+ },
+ "n_stable_frames": 504456,
+ "hr_mae": 0.10526994271496866,
+ "dihedral_F_mae_kcal_mol": 0.5441052885522057,
+ "nve_drift_meV_atom_ps": 0.03956961302277138
+}

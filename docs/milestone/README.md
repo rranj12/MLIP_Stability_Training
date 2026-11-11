@@ -23,6 +23,18 @@ Everything here is one molecule, one architecture, one seed, 100 ps. Treat it as
   so far was a bond failure, so the combined and bond-only (Fu et al.) criteria give identical numbers.
 - **Compute:** Modal, one A10G per job. Stage A: 6 min (short schedule), 48 min (long). Evaluation: 30 min.
 
+## Headline result
+
+On the short-schedule model (the one with real instability), Stage B with the margin loss cut failures
+within 100 ps from 66/256 to 41/256 (λ = 0.0005) and to 6/256 (λ = 0.005), with test force MAE unchanged
+(53.3 → 52.0 and 53.0 meV/Å). Two-proportion z-test against the standard-loss model: p = 0.007 and
+p < 1e-10. On the long-schedule model, which fails 8/256 to begin with, the margin loss changed nothing
+(8 and 9 failures) and λ = 0.005 cost 11% in force MAE.
+
+Not yet ruled out: Stage B also adds 1,500 ordinary gradient steps to an underfit model. A control with
+the margin term off (λ = 0, same steps) is `p5_control_lam0` in `milestone.py`; it appears in the table
+once it has been fetched. Single seed, and all runs share the same 256 starting frames.
+
 ## What did not go as assumed
 
 1. **StABlE's Stage A schedule does not converge on the 950-frame split.** ReduceLROnPlateau with
