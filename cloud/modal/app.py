@@ -35,7 +35,7 @@ image = (
         "tensorboard", "tqdm", "wandb", "scikit-learn", "gsd", "lifelines",
         "matplotlib", "pandas", "scipy",
     )
-    .env({"PYTHONPATH": f"{ROOT}/src:{STABLE}", "WANDB_MODE": "disabled"})
+    .env({"PYTHONPATH": f"{ROOT}/src:{STABLE}", "WANDB_MODE": "disabled", "PYTHONUNBUFFERED": "1"})
     .add_local_dir(REPO, ROOT, copy=True,
                    ignore=[".git", "data", "results", "**/__pycache__", "**/paper_stable_training_results"])
     # the scripts read and write <repo>/data and <repo>/results; point both at the Volume
@@ -52,7 +52,9 @@ def sh(*cmd):
 
 
 @app.function(gpu=os.environ.get("MLIP_GPU", "A10G"), volumes={"/vol": volume}, timeout=12 * 3600)
-def run(molecule: str, model: str, steps: str, eval_ps: float, checkpoint: str, tag: str):
+def run(molecule: str, model: str, steps: str, eval_ps: float, checkpoint: str, tag: str,
+        margin_overrides: str = "", stage_a: str = ""):
+    import yaml
     os.makedirs("/vol/data", exist_ok=True)
     os.makedirs("/vol/results", exist_ok=True)
     sh("nvidia-smi")
@@ -75,15 +77,28 @@ def run(molecule: str, model: str, steps: str, eval_ps: float, checkpoint: str, 
             link.symlink_to(ckpt.parent)
         volume.commit()
 
+    # stage_a: name of a run under results/pretrain/<model>_<molecule>_1k/ to start from instead
+    # of the latest one (e.g. the patience-5 run after a patience-50 run replaced the default link)
+    pre = {}
+    dump = lambda d: yaml.safe_dump(d) if d else ""  # safe_dump({}) is "{}", not valid after other keys
+    if stage_a:
+        dest = Path(f"/vol/results/checkpoints/qm_{stage_a}/{model}/md17-{molecule}_1k_{model}")
+        dest.mkdir(parents=True, exist_ok=True)
+        if not (dest / "checkpoints").is_symlink():
+            (dest / "checkpoints").symlink_to(f"/vol/results/pretrain/{model}_{molecule}_1k/{stage_a}/checkpoints")
+        pre = {"pretrained": {"dir": f"results/checkpoints/qm_{stage_a}"}}
+
     if "margin" in steps:
-        sh("python", "scripts/train_stability.py", "--config", "configs/margin/base.yml",
-           "--molecule", molecule, "--model", model)
+        cfg = "/tmp/margin.yml"  # margin_overrides: YAML merged over base.yml, e.g. "{optim: {lr: 1.0e-5}}"
+        Path(cfg).write_text(f"includes: [{ROOT}/configs/margin/base.yml]\n"
+                             + dump({**(yaml.safe_load(margin_overrides or "{}") or {}), **pre}))
+        sh("python", "scripts/train_stability.py", "--config", cfg, "--molecule", molecule, "--model", model)
         volume.commit()
 
     if "eval" in steps:
         cfg = "/tmp/eval.yml"
         Path(cfg).write_text(
-            f"includes: [{ROOT}/configs/eval/rmd17_500K.yml]\nsimulate: {{length_ps: {eval_ps}}}\n")
+            f"includes: [{ROOT}/configs/eval/rmd17_500K.yml]\nsimulate: {{length_ps: {eval_ps}}}\n" + dump(pre))
         cmd = ["python", "scripts/evaluate.py", "--config", cfg, "--molecule", molecule, "--model", model,
                "--tag", tag or f"pretrained_{model}_{molecule}_{eval_ps:g}ps"]
         if checkpoint:
@@ -94,5 +109,5 @@ def run(molecule: str, model: str, steps: str, eval_ps: float, checkpoint: str, 
 
 @app.local_entrypoint()
 def main(molecule: str = "ethanol", model: str = "schnet", steps: str = "prepare,pretrain,eval",
-         eval_ps: float = 100.0, checkpoint: str = "", tag: str = ""):
-    run.remote(molecule, model, steps, eval_ps, checkpoint, tag)
+         eval_ps: float = 100.0, checkpoint: str = "", tag: str = "", margin_overrides: str = "", stage_a: str = ""):
+    run.remote(molecule, model, steps, eval_ps, checkpoint, tag, margin_overrides, stage_a)

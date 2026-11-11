@@ -44,6 +44,7 @@ class MDSimBackend:
 
         self.device = torch.device(device or ("cuda" if torch.cuda.is_available() else "cpu"))
         self.model_type, self.is_nequip = model_type, model_type == "nequip"
+        self.e_shift = 0.0  # NequIP's rescale layers return absolute energies
         root, d = Path(root), cfg["data"]
         base = root / d["src"] / d["name"] / molecule / d["size"]
         self.data = {s: dict(np.load(base / s / "nequip_npz.npz")) for s in ("train", "val", "test")}
@@ -70,6 +71,10 @@ class MDSimBackend:
             self.model, _, self.model_config = load_pretrained_model(
                 model_type, path=str(self.stage_a_dir), device=self.device)
             r_max_key = "cutoff"
+            # MDsim models are trained on E - mean(E_train) and the calculator returns that raw
+            # output, so labeled energies must be shifted the same way before comparing.
+            ds = self.model_config["dataset"]
+            self.e_shift = float((ds[0] if isinstance(ds, list) else ds).get("target_mean", 0.0))
         if checkpoint is not None:
             self.model.load_state_dict(_load_state(checkpoint, self.device))
         for p in self.model.parameters():
@@ -105,7 +110,10 @@ class MDSimBackend:
 
     # ------------------------------------------------------------------ energies and forces
     def frames(self, split, key="R"):
-        return torch.tensor(self.data[split][key], dtype=torch.float32, device=self.device)
+        a = self.data[split][key]
+        if key == "E":
+            a = a - self.e_shift  # in float64, before the cast
+        return torch.tensor(a, dtype=torch.float32, device=self.device)
 
     def energy_force(self, x, param_grad=False):
         """x (B, N, 3) Å -> (energy (B,) eV, forces (B, N, 3) eV/Å).
