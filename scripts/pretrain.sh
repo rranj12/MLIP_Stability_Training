@@ -37,10 +37,14 @@ PY
   echo "Done: $CKPT_ROOT (StABlE's layout, nothing to link)."
   exit 0
 else
+  # StABlE's patience of 5 epochs is 50 gradient steps on the 950-frame split (10 steps per
+  # epoch): the LR hits its 1e-6 floor after ~4k steps, still underfit. 50 epochs gives the
+  # same steps per patience window as on the 9,500-frame split. PATIENCE=5 reproduces StABlE.
+  PATIENCE=${PATIENCE:-50}
   python pretraining.py --mode train \
     --config-yml "configs/pretraining/md17/${MODEL}.yml" \
-    --molecule "$MOL" --size "$SIZE" \
-    --run-dir "$RUN_DIR" --identifier "${MODEL}_${MOL}_${SIZE}" \
+    --molecule "$MOL" --size "$SIZE" --patience "$PATIENCE" \
+    --run-dir "$RUN_DIR" --identifier "${MODEL}_${MOL}_${SIZE}_p${PATIENCE}" \
     --dataset.src="$ROOT/data/processed/md17" \
     --dataset.molecule="$MOL" \
     --logger.name=tensorboard
