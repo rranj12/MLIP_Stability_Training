@@ -42,6 +42,7 @@ else
     --molecule "$MOL" --size "$SIZE" \
     --run-dir "$RUN_DIR" --identifier "${MODEL}_${MOL}_${SIZE}" \
     --dataset.src="$ROOT/data/processed/md17" \
+    --dataset.molecule="$MOL" \
     --logger.name=tensorboard
 fi
 

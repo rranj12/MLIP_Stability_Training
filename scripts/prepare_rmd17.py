@@ -48,7 +48,7 @@ def write_split(path, idx, z, R, E, F):
     lengths, angles = np.ones(3)[None] * 30.0, np.ones(3)[None] * 90.0
     natoms = np.array([R.shape[1]], dtype=np.int64)
     for i, k in enumerate(idx):
-        data = a2g.convert(natoms, R[k], z, lengths, angles, E[k], F[k])
+        data = a2g.convert(natoms, R[k], z, lengths, angles, E[k:k + 1], F[k])  # energy as (1,), like MD17's (N, 1) rows
         data.sid, data.fid = 0, int(k)
         with db.begin(write=True) as txn:
             txn.put(f"{i}".encode("ascii"), pickle.dumps(data, protocol=-1))
