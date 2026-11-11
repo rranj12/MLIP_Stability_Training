@@ -35,6 +35,23 @@ Not yet ruled out: Stage B also adds 1,500 ordinary gradient steps to an underfi
 the margin term off (λ = 0, same steps) is `p5_control_lam0` in `milestone.py`; it appears in the table
 once it has been fetched. Single seed, and all runs share the same 256 starting frames.
 
+## Why the converged model shows no difference (low signal, not a null result)
+
+On the long-schedule model the standard and margin-loss runs are indistinguishable (8, 8 and 9 failures
+out of 256). We read this as the test being too easy to separate them, not as evidence about the method:
+
+- **100 ps instead of the planned 300 ps.** Evaluations were shortened for time. With ~3% of replicas
+  failing by 100 ps, a method can change the count by only a few replicas, which is inside the noise of
+  256 replicas. Failures accumulate with time, so 300 ps (or 1 ns) leaves more room for a difference.
+- **Ethanol is an easy molecule.** It has 9 atoms, and in Fu et al. (2022) SchNet stays stable on ethanol
+  for 247 ps on average at 500 K, against 26 ps on aspirin and 18 ps on naphthalene. A converged SchNet
+  on ethanol has little instability left to remove.
+- **Few failures to train on.** Stage B found 0 to 3 failing replicas per 20 ps rollout on this model, so
+  the margin term saw only a handful of examples.
+
+Next: aspirin and naphthalene with the long Stage A schedule, evaluated for 300 ps, where a converged
+SchNet should still fail often enough to compare methods.
+
 ## What did not go as assumed
 
 1. **StABlE's Stage A schedule does not converge on the 950-frame split.** ReduceLROnPlateau with
