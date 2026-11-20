@@ -11,7 +11,7 @@ All three methods update `θ ← θ + η Σᵢ wᵢ ∂U(xᵢ)/∂θ` (wᵢ > 0 
 |---|---|---|
 | StABlE | all snapshots of fresh 1 ps rollouts | ∝ (⟨g⟩ − g_ref)·(gᵢ − ⟨g⟩), from the Boltzmann covariance estimator |
 | CRMSE | model samples (+) and training frames (−) | +β/M, −β/N (maximum likelihood) |
-| Ours | flagged failures only | +σ(m − Δᵢ)/\|B\|, switching off once the margin is met |
+| Ours | flagged failures only | +σ((m − Δᵢ)/k_BT)/\|B\|, switching off within a few k_BT of the margin |
 
 Ours is a margin loss in the sense of LeCun et al. (2006); CRMSE is the negative
 log-likelihood loss. Expected trade-off: similar stability, smaller accuracy cost,
@@ -53,6 +53,18 @@ Implications:
   in DFT (k ≈ 700 kcal/mol/Å²), so m = 10 k_BT (≈ 10 kcal/mol) is below the true cost.
   At smaller thresholds a 10–20 k_BT margin would exceed it and bias the surface.
 - The non-bonded collision floors had 0 false positives on the same test frames.
+
+## Softplus scale (changed after the milestone)
+
+The milestone runs used softplus(m − Δ) with Δ in eV. Its transition is then 1 eV
+(≈ 23 k_BT at 500 K) wide, wider than the 10 k_BT margin: the weight is 0.5 when the
+margin is met and still 0.1 at Δ = m + 2.2 eV, and the `stab_loss_tol` early stop needs
+Δ ≈ m + 7 eV, so it never fired. The loss is now k_BT · softplus((m − Δ)/k_BT): the
+weight is 0.5 at the margin and below 0.01 by m + 5 k_BT. λ has to be re-tuned; the
+milestone's 0.005 / 0.0005 were chosen for the unscaled loss.
+
+`detect.bond_threshold: auto` sets the Stage B threshold to the largest bond deviation
+among the DFT training frames + 0.05 Å, per molecule (see the finding above).
 
 ## Anchor: no stop-gradient (changed from the first draft)
 

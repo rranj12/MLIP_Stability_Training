@@ -17,9 +17,9 @@ simulate:
   length_ps: 300               # 1000 for headline configurations if compute allows
   save_every_fs: 50
 
-criteria:
-  bond_threshold: 0.5          # Å; stricter than training's 0.25 Å
-  nonbonded_tol: 0.5           # Å below the closest training distance for that pair
+criteria:                      # `bond_only` in metrics.json is the Fu et al. (arXiv:2210.07237) criterion
+  bond_threshold: 0.5          # Å from the mean training bond length; replicas restart only on this
+  nonbonded_tol: 0.5           # Å below the closest training distance for that pair; adds to `combined` only
 
 observables:
   rdf_bins: {start: 0.0, stop: 10.0, step: 0.02}

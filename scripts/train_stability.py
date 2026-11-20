@@ -63,6 +63,8 @@ def main():
     np.random.seed(cfg["seed"])
 
     backend = MDSimBackend(cfg, cfg["molecule"], cfg["model"], root=ROOT)
+    cfg["detect"]["bond_threshold"] = backend.train_threshold(cfg["detect"])  # resolves `auto`
+    print(f"Stage B bond threshold: {cfg['detect']['bond_threshold']:.3f} Å")
     optimizer = backend.make_optimizer(cfg)
     ef_loss_fn = backend.make_ef_loss_fn(cfg)
     out = ROOT / cfg["results_dir"] / f"{cfg['molecule']}_{cfg['model']}_seed{cfg['seed']}"

@@ -18,7 +18,7 @@ import numpy as np
 import torch
 
 from mlipstab.data.bonds import bond_list, nonbonded_floor
-from mlipstab.detect import extract_failure_pairs, unstable
+from mlipstab.detect import bond_deviation, extract_failure_pairs, unstable
 from mlipstab.md import rollout
 
 CELL = 30.0  # Å, the dummy cubic cell prepare_rmd17.py writes
@@ -259,6 +259,13 @@ class MDSimBackend:
             return x_fail, x_anchor, failed.float().mean().item()
 
         return simulate_fn
+
+    def train_threshold(self, det):
+        """Stage B bond threshold in Å. `auto`: the largest bond deviation among the DFT
+        training frames plus det['auto_margin'], so real DFT geometries are never flagged."""
+        if det["bond_threshold"] != "auto":
+            return float(det["bond_threshold"])
+        return bond_deviation(self.frames("train"), self.bonds, self.b0).max().item() + det["auto_margin"]
 
     def nonbonded(self, tol):
         pairs, floor = nonbonded_floor(self.data["train"]["R"], self._bonds_np, tol=tol)
