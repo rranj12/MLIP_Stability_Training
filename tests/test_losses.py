@@ -9,12 +9,22 @@ from mlipstab.losses.margin import bond_restoring_loss, local_energy, local_mask
 def test_margin_loss_value_at_margin_is_log2():
     e_fail = torch.tensor([1.0])
     e_anchor = torch.tensor([0.5])
-    assert math.isclose(margin_loss(e_fail, e_anchor, margin=0.5).item(), math.log(2), rel_tol=1e-6)
+    assert math.isclose(margin_loss(e_fail, e_anchor, margin=0.5, scale=1.0).item(), math.log(2), rel_tol=1e-6)
 
 
 def test_margin_loss_saturates_above_margin():
-    loss = margin_loss(torch.tensor([10.0]), torch.tensor([0.0]), margin=0.4)
+    loss = margin_loss(torch.tensor([10.0]), torch.tensor([0.0]), margin=0.4, scale=1.0)
     assert loss.item() < 1e-4
+
+
+def test_margin_loss_switches_off_within_a_few_kT_of_the_margin():
+    kt = 0.0431  # eV at 500 K
+    m = 10 * kt
+    push = lambda gap: -torch.autograd.grad(
+        margin_loss(gap, torch.zeros(1), m, kt), gap)[0].item()  # weight on dU(x_fail)/dtheta
+    at = lambda g: torch.tensor([g], requires_grad=True)
+    assert math.isclose(push(at(m)), 0.5, rel_tol=1e-5)
+    assert push(at(m - 5 * kt)) > 0.99 and push(at(m + 5 * kt)) < 0.01
 
 
 def _offset_grad(stop_grad_anchor):
@@ -23,7 +33,7 @@ def _offset_grad(stop_grad_anchor):
     c = torch.tensor(0.0, requires_grad=True)
     U = lambda x: a * (x ** 2).sum(dim=(1, 2)) + c
     x_fail, x_anchor = torch.ones(2, 3, 3), torch.zeros(2, 3, 3)
-    margin_loss(U(x_fail), U(x_anchor), 0.43, stop_grad_anchor).backward()
+    margin_loss(U(x_fail), U(x_anchor), 0.43, 0.043, stop_grad_anchor).backward()
     return a.grad.item(), c.grad.item()
 
 

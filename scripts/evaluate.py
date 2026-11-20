@@ -5,8 +5,8 @@
 
 --checkpoint is a weights file (ours: ckpt.pt; StABlE: its ckpt.pt / .pth); omit it to
 evaluate the Stage A model. Outputs under results/eval/<tag>/:
-    stability.npz   per-replica first-failure time + censoring flag (combined and bond-only)
-    traj.npy        positions every save_every_fs; frames from a replica's failure on are NaN
+    stability.npz   per-replica first-failure time + censoring flag (bond-only and combined)
+    traj.npy        positions every save_every_fs; frames from a replica's bond failure on are NaN
     metrics.json    median tau, fraction stable at 100/300 ps, E/F MAE,
                     h(r) error, dihedral F(phi) error, NVE drift
 """
@@ -25,7 +25,7 @@ sys.path.insert(0, str(ROOT / "third_party/StABlE-Training"))
 
 from mlipstab.config import load_config  # noqa: E402
 from mlipstab.data.bonds import pairwise_distances  # noqa: E402
-from mlipstab.detect import bond_deviation, unstable  # noqa: E402
+from mlipstab.detect import bond_deviation, nonbonded_collision  # noqa: E402
 from mlipstab.eval.observables import dihedral, free_energy_profile  # noqa: E402
 from mlipstab.eval.stability import first_failure_time, kaplan_meier, median_survival  # noqa: E402
 from mlipstab.mdsim_backend import MDSimBackend  # noqa: E402
@@ -104,8 +104,9 @@ def main():
                "temperature": sim["temperature"], "checkpoint": args.checkpoint}
 
     # 2. Langevin MD from the first n_replicas test frames (same starts for every model)
-    nb_pairs, nb_floor = backend.nonbonded(crit["nonbonded_tol"])
-    failed_fn = lambda x: unstable(x, backend.bonds, backend.b0, crit["bond_threshold"], nb_pairs, nb_floor)
+    # A replica is restarted only when it fails the bond criterion of Fu et al. (or goes
+    # non-finite), so the bond-only failure time is not cut short by a non-bonded collision.
+    failed_fn = lambda x: bond_deviation(x, backend.bonds, backend.b0) > crit["bond_threshold"]
     every = int(round(sim["save_every_fs"] / sim["timestep_fs"]))
     n_steps = int(round(sim["length_ps"] * 1000 / sim["timestep_fs"]))
     x0 = backend.frames(cfg["data"]["start_split"])[:sim["n_replicas"]]
@@ -115,21 +116,21 @@ def main():
     # survivors are censored at length_ps only if the run went the full length.
     dt_ps = sim["save_every_fs"] / 1000
     bonds, b0 = backend.bonds.cpu(), backend.b0.cpu()
-    bad = torch.cat([unstable(c, bonds, b0, crit["bond_threshold"], nb_pairs.cpu(), nb_floor.cpu())
-                     for c in traj.split(500)]).numpy()
-    bad_bond = torch.cat([bond_deviation(c, bonds, b0) > crit["bond_threshold"] for c in traj.split(500)]).numpy()
-    times, observed = first_failure_time(bad, dt_ps)
-    # bond-only (Fu et al.) criterion: a replica reset by a collision is censored at that time
-    t_bond, obs_bond = first_failure_time(bad_bond & (np.cumsum(bad, 0) <= 1), dt_ps)
-    t_bond = np.minimum(t_bond, times)
+    nb_pairs, nb_floor = (t.cpu() for t in backend.nonbonded(crit["nonbonded_tol"]))
+    bad_bond = torch.cat([(bond_deviation(c, bonds, b0) > crit["bond_threshold"])
+                          | ~torch.isfinite(c).all(dim=(2, 3)) for c in traj.split(500)]).numpy()
+    collided = torch.cat([nonbonded_collision(c, nb_pairs, nb_floor) for c in traj.split(500)]).numpy()
+    t_bond, obs_bond = first_failure_time(bad_bond, dt_ps)  # Fu et al. criterion
+    # combined: the first bond failure or non-bonded collision (never later than the bond-only time)
+    times, observed = first_failure_time(bad_bond | collided, dt_ps)
     np.savez(out / "stability.npz", times_ps=times, observed=observed,
              times_bond_only_ps=t_bond, observed_bond_only=obs_bond)
     metrics["combined"] = survival(times, observed, sim["length_ps"])
     metrics["bond_only"] = survival(t_bond, obs_bond, sim["length_ps"])
 
-    # 5. observables on stable frames only, against held-out DFT frames
+    # 5. observables on stable frames only (bond criterion, as in Fu et al.), against held-out DFT frames
     frames = traj.numpy()
-    first = np.round(times / dt_ps).astype(int)
+    first = np.round(t_bond / dt_ps).astype(int)
     frames[np.arange(len(frames))[:, None] >= first[None]] = np.nan
     np.save(out / "traj.npy", frames.astype(np.float32))
     stable = frames[np.isfinite(frames).all(axis=(2, 3))]  # (n_stable, N, 3)

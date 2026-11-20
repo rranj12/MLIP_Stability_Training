@@ -53,7 +53,8 @@ def run_stage_b(model, optimizer, cfg, simulate_fn, energy_fn, ef_loss_fn,
     if cfg.restore_weight > 0 and bonds is None:
         raise ValueError("restore_weight > 0 needs bonds and b0")
     buffer = FailureBuffer(cfg.buffer_capacity)
-    margin = cfg.margin_kT * kT(cfg.temperature)
+    scale = kT(cfg.temperature)
+    margin = cfg.margin_kT * scale
     base_mae = val_force_mae_fn(model)
     history = []
 
@@ -81,7 +82,7 @@ def run_stage_b(model, optimizer, cfg, simulate_fn, energy_fn, ef_loss_fn,
                     e_anchor = energy_fn(model, xa)
             else:
                 e_anchor = energy_fn(model, xa)
-            l_stab = margin_loss(e_fail, e_anchor, margin, cfg.stop_grad_anchor)
+            l_stab = margin_loss(e_fail, e_anchor, margin, scale, cfg.stop_grad_anchor)
             loss = ef_loss_fn(model, cfg.batch_labeled) + cfg.lam * l_stab
             if cfg.restore_weight > 0:
                 k = worst_bond(xf, bonds, b0)

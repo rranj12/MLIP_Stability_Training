@@ -20,7 +20,8 @@ simulate:
   end_phase_fail_frac: 0.20    # end a rollout once 20% of replicas have failed
 
 detect:
-  bond_threshold: 0.25         # Å; NOTE: real rMD17 ethanol test frames reach 0.226 Å (docs/design_notes.md)
+  bond_threshold: auto         # Å, or `auto` = largest deviation among the DFT training frames + auto_margin
+  auto_margin: 0.05            # Å; a fixed 0.25 Å sits inside ethanol's DFT range (docs/design_notes.md)
   anchor_lag_steps: 500        # x0 is taken this many MD steps before the failure
   bond_scale: 1.2              # bonded if mean training distance < 1.2 x sum of covalent radii
 
@@ -29,7 +30,7 @@ stage_b:                       # fields of mlipstab.train.stage_b.StageBConfig
   steps_per_cycle: 500
   batch_labeled: 8
   batch_pairs: 16
-  lam: 0.1
+  lam: 0.1                     # untuned for the k_BT-scaled softplus; the milestone's 0.005 / 0.0005 were for the unscaled one
   margin_kT: 10.0
   temperature: 500.0
   stop_grad_anchor: false      # true only as an ablation: it pushes a global energy offset up

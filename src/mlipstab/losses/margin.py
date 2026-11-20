@@ -1,9 +1,13 @@
 """Targeted, bounded contrastive (margin) stability loss.
 
-    L_stab = mean softplus( m - [U(x_fail) - U(x_anchor)] )
+    L_stab = s * mean softplus( (m - [U(x_fail) - U(x_anchor)]) / s ),   s = k_B T
+
+The softplus is evaluated in units of s, so the push fades over a few k_B T past
+the margin. Without it (s = 1 eV) the transition is ~23 k_B T wide at 500 K, wider
+than a 10 k_B T margin, and the loss never switches off.
 
 Gradients flow through BOTH energies by default, so the penalty gradient is
-sigma(m - gap) * [dU(x_fail)/dtheta - dU(x_anchor)/dtheta] and any shift common
+sigma((m - gap)/s) * [dU(x_fail)/dtheta - dU(x_anchor)/dtheta] and any shift common
 to all energies (e.g. a readout bias) cancels. With a stop-gradient on the anchor
 the gradient is dU(x_fail)/dtheta alone: it keeps pushing a global energy offset
 up, which changes no force but fights the energy term of L_EF and biases energies.
@@ -14,11 +18,11 @@ import torch
 import torch.nn.functional as F
 
 
-def margin_loss(e_fail, e_anchor, margin, stop_grad_anchor=False):
-    """e_fail, e_anchor: (B,) energies in eV. margin: eV (e.g. 10 * kT(500))."""
+def margin_loss(e_fail, e_anchor, margin, scale, stop_grad_anchor=False):
+    """e_fail, e_anchor: (B,) energies in eV. margin, scale: eV (e.g. 10 * kT(500), kT(500))."""
     if stop_grad_anchor:
         e_anchor = e_anchor.detach()
-    return F.softplus(margin - (e_fail - e_anchor)).mean()
+    return scale * F.softplus((margin - (e_fail - e_anchor)) / scale).mean()
 
 
 def bond_restoring_loss(x, energy_fn, bond_pairs, b0, scale=1.0):

@@ -8,7 +8,7 @@ fixes, **StABlE** (observable matching) and **CRMSE** (contrastive maximum likel
 under one MD protocol on rMD17 (and MD22).
 
 ```
-L = L_EF + λ · mean softplus( m − [U(x_fail) − U(x_anchor)] )
+L = L_EF + λ · k_BT · mean softplus( (m − [U(x_fail) − U(x_anchor)]) / k_BT )
 ```
 
 `x_fail` fails a bond-deviation check during a Langevin rollout, `x_anchor` is by

@@ -19,8 +19,12 @@ Everything here is one molecule, one architecture, one seed, 100 ps. Treat it as
   Failures come from 128-replica, 20 ps Langevin rollouts at 500 K (bond deviation > 0.25 Å);
   up to 3 cycles of 500 steps, Adam 1e-5, 100 labeled frames per step.
 - **Evaluation:** 256 Langevin replicas from test frames, 500 K, 0.5 fs, 100 ps. A replica fails when a
-  bond deviates > 0.5 Å from its mean training length, or two non-bonded atoms collide. Every failure
-  so far was a bond failure, so the combined and bond-only (Fu et al.) criteria give identical numbers.
+  bond deviates > 0.5 Å from its mean training length, or two non-bonded atoms collide. **Correction:**
+  most of these failures are non-bonded collisions, not bond failures (bond failures / all failures:
+  short schedule 6/66 standard, 10/55 control, 3/41 and 0/6 margin; long schedule 0/8, 0/8, 0/9; see
+  `failed_bond_only` in `data/*/stability.csv`). Replicas were restarted at a collision, so these
+  bond-only counts are lower bounds; `scripts/evaluate.py` no longer restarts on collisions. These
+  runs also predate the k_BT-scaled softplus (docs/design_notes.md).
 - **Compute:** Modal, one A10G per job. Stage A: 6 min (short schedule), 48 min (long). Evaluation: 30 min.
 
 ## Headline result
