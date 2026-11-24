@@ -1,0 +1,20 @@
+{
+ "energy_mae_kcal_mol": 97076.23158515625,
+ "force_mae_kcal_mol_A": 1.2294008195200095,
+ "temperature": 500.0,
+ "checkpoint": null,
+ "combined": {
+  "median_tau_ps": null,
+  "mean_tau_ps": 84.43281249999998,
+  "frac_stable_100ps": 0.7421875
+ },
+ "bond_only": {
+  "median_tau_ps": null,
+  "mean_tau_ps": 84.43281249999998,
+  "frac_stable_100ps": 0.7421875
+ },
+ "n_stable_frames": 432296,
+ "hr_mae": 0.10350520219684867,
+ "dihedral_F_mae_kcal_mol": 0.5364833282025754,
+ "nve_drift_meV_atom_ps": 0.046320159348948176
+}

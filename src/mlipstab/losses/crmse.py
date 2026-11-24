@@ -17,14 +17,19 @@ def contrastive_term(e_pos, e_neg, beta):
     return beta * e_pos.mean() - beta * e_neg.mean()
 
 
-def ula_step(x, energy_fn, step_size, beta, precond=None, generator=None):
+def ula_step(x, energy_fn, step_size, beta, precond=None, generator=None, force_fn=None):
     """One unadjusted Langevin step: x - eta * H grad U + sqrt(2 eta H / beta) * xi.
 
     x: (B, N, 3). precond: optional (N,) per-atom weights H (the paper uses
     mass-based weights, App. B tables II-III). Returns a detached tensor.
+    If force_fn is given, grad U = -force_fn(x) and energy_fn is not used.
     """
-    x = x.detach().requires_grad_(True)
-    grad = torch.autograd.grad(energy_fn(x).sum(), x)[0]
+    if force_fn is not None:
+        x = x.detach()
+        grad = -force_fn(x)
+    else:
+        x = x.detach().requires_grad_(True)
+        grad = torch.autograd.grad(energy_fn(x).sum(), x)[0]
     h = 1.0 if precond is None else precond.view(1, -1, 1)
     noise = torch.randn(x.shape, generator=generator, device=x.device, dtype=x.dtype)
     return (x - step_size * h * grad + (2 * step_size * h / beta) ** 0.5 * noise).detach()

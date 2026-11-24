@@ -1,0 +1,102 @@
+{
+ "config": {
+  "data": {
+   "src": "data/processed",
+   "name": "md17",
+   "size": "1k"
+  },
+  "pretrained": {
+   "dir": "results/checkpoints/qm_md17-ethanol_1k_schnet_schnet_ethanol_1k"
+  },
+  "simulate": {
+   "n_replicas": 128,
+   "temperature": 500.0,
+   "integrator": "Langevin",
+   "timestep_fs": 0.5,
+   "friction_per_ps": 0.1,
+   "check_every_steps": 100,
+   "max_ps": 20.0,
+   "end_phase_fail_frac": 0.2
+  },
+  "detect": {
+   "bond_threshold": 0.25,
+   "anchor_lag_steps": 500,
+   "bond_scale": 1.2
+  },
+  "stage_b": {
+   "n_cycles": 3,
+   "steps_per_cycle": 500,
+   "batch_labeled": 100,
+   "batch_pairs": 16,
+   "lam": 0.005,
+   "margin_kT": 10.0,
+   "temperature": 500.0,
+   "stop_grad_anchor": false,
+   "anchor": "rollout",
+   "restore_weight": 0.0,
+   "restore_scale": 1.0,
+   "buffer_capacity": 2000,
+   "guardrail_rel": 0.15,
+   "stop_fail_frac": 0.01,
+   "grad_clip": 1.0
+  },
+  "optim": {
+   "name": "Adam",
+   "lr": 1e-05,
+   "reuse_stage_a_state": true
+  },
+  "localize": {
+   "enabled": false,
+   "cutoff": 5.0
+  },
+  "seed": 0,
+  "results_dir": "results/margin_p5_lam005",
+  "molecule": "ethanol",
+  "model": "schnet"
+ },
+ "resolved": {
+  "n_cycles": 3,
+  "steps_per_cycle": 500,
+  "batch_labeled": 100,
+  "batch_pairs": 16,
+  "lam": 0.005,
+  "margin_kT": 10.0,
+  "temperature": 500.0,
+  "stop_grad_anchor": false,
+  "anchor": "rollout",
+  "restore_weight": 0.0,
+  "restore_scale": 1.0,
+  "buffer_capacity": 2000,
+  "stab_loss_tol": 0.001,
+  "guardrail_rel": 0.15,
+  "stop_fail_frac": 0.01,
+  "grad_clip": 1.0,
+  "device": "cuda"
+ },
+ "history": [
+  {
+   "cycle": 0,
+   "fail_frac": 0.0859375,
+   "buffer": 11,
+   "steps": 500,
+   "l_stab": 0.546663224697113,
+   "val_force_mae": 0.054117567274305556
+  },
+  {
+   "cycle": 1,
+   "fail_frac": 0.0234375,
+   "buffer": 14,
+   "steps": 500,
+   "l_stab": 0.6245982646942139,
+   "val_force_mae": 0.05385199652777778
+  },
+  {
+   "cycle": 2,
+   "fail_frac": 0.0234375,
+   "buffer": 17,
+   "steps": 500,
+   "l_stab": 0.4748494327068329,
+   "val_force_mae": 0.05282996283637153
+  }
+ ]
+}

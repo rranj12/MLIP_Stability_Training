@@ -1,0 +1,13 @@
+# Stage B on an MD22 molecule (data from scripts/prepare_md22.py). Molecule and model come
+# from the command line:
+#   python scripts/train_stability.py --config configs/margin/md22.yml \
+#       --molecule AT_AT_CG_CG --model schnet
+# SchNet and GemNet-T search neighbors over replicas x atoms^2 x 27 pair images every step,
+# so at 370 atoms (double_walled_nanotube) lower simulate.n_replicas to about 16.
+
+includes:
+  - base.yml
+
+data:
+  name: md22
+  cell: 100.0                  # Å, the dummy cell prepare_md22.py writes

@@ -1,0 +1,14 @@
+# The rMD17 evaluation protocol on an MD22 molecule (data from scripts/prepare_md22.py).
+
+includes:
+  - rmd17_500K.yml
+
+data:
+  name: md22
+  cell: 100.0                  # Å, the dummy cell prepare_md22.py writes
+
+simulate:
+  n_replicas: 48               # as StABlE's MD22 runs; about 16 at 370 atoms (see configs/margin/md22.yml)
+
+observables:
+  rdf_bins: {stop: 15.0}       # as StABlE's MD22 runs (10 Å on MD17)

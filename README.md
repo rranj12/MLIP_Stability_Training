@@ -8,7 +8,7 @@ fixes, **StABlE** (observable matching) and **CRMSE** (contrastive maximum likel
 under one MD protocol on rMD17 (and MD22).
 
 ```
-L = L_EF + λ · mean softplus( m − [U(x_fail) − U(x_anchor)] )
+L = L_EF + λ · k_BT · mean softplus( (m − [U(x_fail) − U(x_anchor)]) / k_BT )
 ```
 
 `x_fail` fails a bond-deviation check during a Langevin rollout, `x_anchor` is by
@@ -30,17 +30,19 @@ bond-restoring force hinge. See [docs/design_notes.md](docs/design_notes.md).
 | rMD17 download + splits | implemented, checked on real ethanol data |
 | rMD17 → StABlE LMDB layout (`scripts/prepare_rmd17.py`) | implemented, needs a run in the full env |
 | Pretraining / StABlE baseline wrappers | thin wrappers around the submodule |
-| MDsim glue for our Stage B, CRMSE loop, evaluation harness | `TODO` stubs with pointers to the StABlE code to reuse |
-| NequIP rMD17 pretraining config, MACE | to add in the pilot |
+| MDsim glue (`mlipstab.mdsim_backend`), Stage B and CRMSE scripts, evaluation harness | implemented; loops unit-tested and smoke-tested with a toy model, not yet run against real SchNet/NequIP checkpoints on a GPU |
+| NequIP rMD17 pretraining (`scripts/pretrain.sh nequip <mol>`) | implemented from StABlE's MD17 NequIP configs, not yet run |
+| MD22 molecules and GemNet-T (`scripts/prepare_md22.py`, `DATASET=md22 scripts/pretrain.sh`, model `gemnet_t`) | implemented; whole pipeline run on CPU with synthetic data for SchNet, GemNet-T and NequIP, not yet on real MD22 data or a GPU |
+| MACE, analysis scripts | to add |
 
 ## Layout
 
 ```
 configs/
-  margin/        our method (base.yml + per molecule/model)
+  margin/        our method (base.yml + per molecule/model; md22.yml for MD22 molecules)
   crmse/         CRMSE baseline (paper settings)
   stable/        StABlE baseline: includes StABlE's own configs, overrides paths only
-  eval/          one evaluation protocol for every method
+  eval/          one evaluation protocol for every method (rmd17_500K.yml, md22_500K.yml)
 src/mlipstab/
   losses/        margin.py, anchors.py, crmse.py
   train/         stage_b.py (backend-agnostic loop)
@@ -49,7 +51,8 @@ src/mlipstab/
   detect.py  buffer.py  units.py  config.py
 scripts/
   prepare_rmd17.py      data -> StABlE layout
-  pretrain.sh           Stage A via StABlE's pretraining.py
+  prepare_md22.py       same layout for the seven MD22 molecules (42 to 370 atoms)
+  pretrain.sh           Stage A via StABlE's pretraining.py (schnet, gemnet_t) or nequip-train
   run_stable.sh         StABlE baseline, unmodified
   train_stability.py    Stage B for ours / CRMSE
   evaluate.py           shared evaluation harness
@@ -76,6 +79,25 @@ python scripts/train_stability.py --config configs/margin/aspirin_schnet.yml
 python scripts/evaluate.py --config configs/eval/rmd17_500K.yml \
     --molecule aspirin --model schnet --checkpoint <ckpt> --tag margin_seed0
 ```
+
+GemNet-T uses the same commands with the model name `gemnet_t`
+(`scripts/pretrain.sh gemnet_t aspirin`, `configs/margin/aspirin_gemnet_t.yml`).
+An MD22 molecule takes its own data script and configs:
+
+```bash
+python scripts/prepare_md22.py --molecule AT_AT_CG_CG          # 950 / 50 / 1,000 random frames
+DATASET=md22 scripts/pretrain.sh schnet AT_AT_CG_CG
+python scripts/train_stability.py --config configs/margin/md22.yml \
+    --molecule AT_AT_CG_CG --model schnet
+python scripts/evaluate.py --config configs/eval/md22_500K.yml \
+    --molecule AT_AT_CG_CG --model schnet --checkpoint <ckpt> --tag margin_seed0
+```
+
+SchNet and GemNet-T find neighbors by comparing every atom pair in 27 periodic images, so
+memory grows with replicas (or batch size) times atoms squared: about 0.05 GB per replica
+at 118 atoms and 0.5 GB at 370, measured on CPU. At 370 atoms (`double_walled_nanotube`)
+lower `simulate.n_replicas` to about 16 and pass `--optim.batch_size=16` to
+`scripts/pretrain.sh`.
 
 ## Experiment plan
 
