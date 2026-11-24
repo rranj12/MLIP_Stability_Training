@@ -1,0 +1,5 @@
+includes:
+  - base.yml
+
+molecule: aspirin
+model: gemnet_t                # MDsim's registry name; Stage A: scripts/pretrain.sh gemnet_t aspirin

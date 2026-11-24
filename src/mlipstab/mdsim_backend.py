@@ -11,6 +11,7 @@ train() plus a manual rescale wherever a loss needs parameter gradients.
 `_check_nequip_modes` verifies at start-up that the two paths agree.
 """
 
+import os
 import warnings
 from pathlib import Path
 
@@ -21,7 +22,16 @@ from mlipstab.data.bonds import bond_list, nonbonded_floor
 from mlipstab.detect import bond_deviation, extract_failure_pairs, unstable
 from mlipstab.md import rollout
 
-CELL = 30.0  # Å, the dummy cubic cell prepare_rmd17.py writes
+CELL = 30.0  # Å, the dummy cubic cell prepare_rmd17.py writes (override with data.cell)
+
+
+def _l2mae(pred, target):
+    """MDsim's `l2mae` (GemNet-T's force loss): mean Euclidean norm of the per-atom error."""
+    return (pred - target).norm(dim=-1).mean()
+
+
+LOSSES = {"l1": torch.nn.functional.l1_loss, "mae": torch.nn.functional.l1_loss,
+          "mse": torch.nn.functional.mse_loss, "l2mae": _l2mae}
 
 
 def _load_state(path, device):
@@ -67,9 +77,16 @@ class MDSimBackend:
                 self.rescale_layers.append(layer)
                 layer = getattr(layer, "model", None)
         else:
+            import mdsim
             from mdsim.models.load_models import load_pretrained_model
-            self.model, _, self.model_config = load_pretrained_model(
-                model_type, path=str(self.stage_a_dir), device=self.device)
+            # GemNet-T's config names its scale file relative to the submodule, so load from there
+            path, cwd = str(self.stage_a_dir.resolve()), os.getcwd()
+            os.chdir(Path(mdsim.__file__).parents[1])
+            try:
+                self.model, _, self.model_config = load_pretrained_model(
+                    model_type, path=path, device=self.device)
+            finally:
+                os.chdir(cwd)
             r_max_key = "cutoff"
             # MDsim models are trained on E - mean(E_train) and the calculator returns that raw
             # output, so labeled energies must be shifted the same way before comparing.
@@ -81,7 +98,8 @@ class MDSimBackend:
             p.requires_grad = True
 
         # ---- StABlE's batched calculator (mirrors Simulator.__init__)
-        atoms = ase.Atoms(numbers=z, positions=self.data["train"]["R"][0], cell=np.eye(3) * CELL, pbc=True)
+        cell = d.get("cell", CELL)
+        atoms = ase.Atoms(numbers=z, positions=self.data["train"]["R"][0], cell=np.eye(3) * cell, pbc=True)
         self.masses = torch.tensor(atoms.get_masses(), dtype=torch.float32, device=self.device).view(1, -1, 1)
         batch = Batch.from_data_list(
             [AtomicData.from_ase(atoms=atoms, r_max=self.model_config["model"][r_max_key])])
@@ -97,7 +115,7 @@ class MDSimBackend:
         self.calc = ForceCalculator(
             self.model, model_type, self.model_config, r_max_key, self.n_atoms,
             torch.tensor(z, dtype=torch.long, device=self.device), batch, False,
-            torch.eye(3, device=self.device) * CELL, self.device)
+            torch.eye(3, device=self.device) * cell, self.device)
 
         # ---- topology from the training frames
         bonds, b0 = bond_list(z, self.data["train"]["R"], scale=cfg.get("detect", {}).get("bond_scale", 1.2))
@@ -126,12 +144,12 @@ class MDSimBackend:
         e = e.reshape(-1)
         if self.is_nequip and param_grad:  # train mode skips RescaleOutput; apply it by hand
             for layer in reversed(self.rescale_layers):
-                if getattr(layer, "scale_by", None) is not None:
+                if getattr(layer, "has_scale", False):  # without one, nequip stores an empty tensor, not None
                     if "total_energy" in layer.scale_keys:
                         e = e * layer.scale_by
                     if "forces" in layer.scale_keys:
                         f = f * layer.scale_by
-                if getattr(layer, "shift_by", None) is not None:
+                if getattr(layer, "has_shift", False):
                     if list(layer.shift_keys) != ["total_energy"]:
                         raise NotImplementedError(f"unsupported NequIP shift keys {layer.shift_keys}")
                     e = e + layer.shift_by
@@ -176,8 +194,7 @@ class MDSimBackend:
             optim = self.model_config.get("optim", {})
             w_e = o.get("energy_weight", optim.get("energy_coefficient", 1.0))
             w_f = o.get("force_weight", optim.get("force_coefficient", 30.0))
-            pick = lambda name: torch.nn.functional.l1_loss if name in ("l1", "mae") else torch.nn.functional.mse_loss
-            e_loss, f_loss = pick(optim.get("loss_energy", "mse")), pick(optim.get("loss_force", "mse"))
+            e_loss, f_loss = LOSSES[optim.get("loss_energy", "mse")], LOSSES[optim.get("loss_force", "mse")]
 
         def ef_loss_fn(model, batch_size):
             idx = torch.as_tensor(self.rng.choice(len(R), batch_size, replace=False), device=self.device)

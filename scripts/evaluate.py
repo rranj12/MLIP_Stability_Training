@@ -24,7 +24,7 @@ sys.path.insert(0, str(ROOT / "src"))
 sys.path.insert(0, str(ROOT / "third_party/StABlE-Training"))
 
 from mlipstab.config import load_config  # noqa: E402
-from mlipstab.data.bonds import pairwise_distances  # noqa: E402
+from mlipstab.data.bonds import frame_chunks, pairwise_distances  # noqa: E402
 from mlipstab.detect import bond_deviation, nonbonded_collision  # noqa: E402
 from mlipstab.eval.observables import dihedral, free_energy_profile  # noqa: E402
 from mlipstab.eval.stability import first_failure_time, kaplan_meier, median_survival  # noqa: E402
@@ -32,12 +32,12 @@ from mlipstab.mdsim_backend import MDSimBackend  # noqa: E402
 from mlipstab.units import EV_TO_KCAL_MOL, kT  # noqa: E402
 
 
-def hist_density(coords, bins, chunk=2000):
+def hist_density(coords, bins):
     """h(r) over many frames without holding every distance in memory."""
     counts = np.zeros(len(bins) - 1)
     i, j = np.triu_indices(coords.shape[1], k=1)
-    for s in range(0, len(coords), chunk):
-        counts += np.histogram(pairwise_distances(coords[s:s + chunk])[:, i, j], bins=bins)[0]
+    for c in frame_chunks(coords):
+        counts += np.histogram(pairwise_distances(c)[:, i, j], bins=bins)[0]
     return counts / (counts.sum() * np.diff(bins))
 
 
@@ -117,9 +117,11 @@ def main():
     dt_ps = sim["save_every_fs"] / 1000
     bonds, b0 = backend.bonds.cpu(), backend.b0.cpu()
     nb_pairs, nb_floor = (t.cpu() for t in backend.nonbonded(crit["nonbonded_tol"]))
+    # frames per chunk: non-bonded pairs grow with atoms squared (190 for aspirin, 67,710 at 370 atoms)
+    chunks = traj.split(max(1, 2 ** 25 // (traj.shape[1] * len(nb_pairs))))
     bad_bond = torch.cat([(bond_deviation(c, bonds, b0) > crit["bond_threshold"])
-                          | ~torch.isfinite(c).all(dim=(2, 3)) for c in traj.split(500)]).numpy()
-    collided = torch.cat([nonbonded_collision(c, nb_pairs, nb_floor) for c in traj.split(500)]).numpy()
+                          | ~torch.isfinite(c).all(dim=(2, 3)) for c in chunks]).numpy()
+    collided = torch.cat([nonbonded_collision(c, nb_pairs, nb_floor) for c in chunks]).numpy()
     t_bond, obs_bond = first_failure_time(bad_bond, dt_ps)  # Fu et al. criterion
     # combined: the first bond failure or non-bonded collision (never later than the bond-only time)
     times, observed = first_failure_time(bad_bond | collided, dt_ps)

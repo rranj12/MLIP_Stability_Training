@@ -1,12 +1,17 @@
 """Run the pipeline on Modal. Data and results live on the `mlipstab` Volume.
 
     modal run --detach cloud/modal/app.py --molecule ethanol --model schnet
+    modal run --detach cloud/modal/app.py --molecule aspirin --model gemnet_t
+    modal run --detach cloud/modal/app.py --dataset md22 --molecule AT_AT_CG_CG --model schnet
 
 Steps (comma-separated, default prepare,pretrain,eval):
-    prepare   rMD17 download + StABlE layout (skipped if already on the Volume)
+    prepare   rMD17 or MD22 download + StABlE layout (skipped if already on the Volume)
     pretrain  Stage A (scripts/pretrain.sh), then link the run where StABlE expects it
     eval      scripts/evaluate.py on the Stage A model, or on --checkpoint
-    margin    Stage B with our loss (scripts/train_stability.py on configs/margin/base.yml)
+    margin    Stage B with our loss (scripts/train_stability.py on configs/margin/base.yml or md22.yml)
+
+Large molecules: --pretrain-args="--optim.batch_size=16" is passed to scripts/pretrain.sh, and
+--eval-overrides="{simulate: {n_replicas: 16}}" is merged over the evaluation config.
 
 GPU: MLIP_GPU=A100 modal run ...   (default A10G)
 Workspace: modal profile activate <workspace>, or MODAL_PROFILE=<workspace> modal run ...
@@ -51,25 +56,32 @@ def sh(*cmd):
     subprocess.run([str(c) for c in cmd], check=True, cwd=ROOT)
 
 
-@app.function(gpu=os.environ.get("MLIP_GPU", "A10G"), volumes={"/vol": volume}, timeout=12 * 3600)
+@app.function(gpu=os.environ.get("MLIP_GPU", "A10G"), volumes={"/vol": volume}, timeout=24 * 3600)
 def run(molecule: str, model: str, steps: str, eval_ps: float, checkpoint: str, tag: str,
-        margin_overrides: str = "", stage_a: str = ""):
+        margin_overrides: str = "", stage_a: str = "", dataset: str = "md17",
+        pretrain_args: str = "", eval_overrides: str = ""):
     import yaml
+    os.environ["DATASET"] = dataset  # read by scripts/pretrain.sh
+    name = f"{dataset}-{molecule}_1k_{model}"  # StABlE's name for a Stage A run
+    margin_cfg, eval_cfg = {"md17": ("base.yml", "rmd17_500K.yml"), "md22": ("md22.yml", "md22_500K.yml")}[dataset]
     os.makedirs("/vol/data", exist_ok=True)
     os.makedirs("/vol/results", exist_ok=True)
     sh("nvidia-smi")
     steps = steps.split(",")
 
-    if "prepare" in steps and not os.path.exists(f"/vol/data/processed/md17/{molecule}/1k/metadata.npy"):
-        sh("python", "scripts/prepare_rmd17.py", "--molecule", molecule, "--reference", "same")
+    if "prepare" in steps and not os.path.exists(f"/vol/data/processed/{dataset}/{molecule}/1k/metadata.npy"):
+        if dataset == "md22":
+            sh("python", "scripts/prepare_md22.py", "--molecule", molecule)
+        else:
+            sh("python", "scripts/prepare_rmd17.py", "--molecule", molecule, "--reference", "same")
         volume.commit()
 
     if "pretrain" in steps:
-        sh("bash", "scripts/pretrain.sh", model, molecule)
+        sh("bash", "scripts/pretrain.sh", model, molecule, "1k", *pretrain_args.split())
         if model != "nequip":  # pretrain.sh leaves this link to the caller
             run_dir = Path(f"/vol/results/pretrain/{model}_{molecule}_1k")
             ckpt = max(run_dir.glob("*/checkpoints/best_checkpoint.pt"), key=os.path.getmtime)
-            dest = Path(f"/vol/results/checkpoints/qm_pretrained/{model}/md17-{molecule}_1k_{model}")
+            dest = Path(f"/vol/results/checkpoints/qm_pretrained/{model}/{name}")
             dest.mkdir(parents=True, exist_ok=True)
             link = dest / "checkpoints"
             if link.is_symlink():
@@ -82,7 +94,7 @@ def run(molecule: str, model: str, steps: str, eval_ps: float, checkpoint: str, 
     pre = {}
     dump = lambda d: yaml.safe_dump(d) if d else ""  # safe_dump({}) is "{}", not valid after other keys
     if stage_a:
-        dest = Path(f"/vol/results/checkpoints/qm_{stage_a}/{model}/md17-{molecule}_1k_{model}")
+        dest = Path(f"/vol/results/checkpoints/qm_{stage_a}/{model}/{name}")
         dest.mkdir(parents=True, exist_ok=True)
         if not (dest / "checkpoints").is_symlink():
             (dest / "checkpoints").symlink_to(f"/vol/results/pretrain/{model}_{molecule}_1k/{stage_a}/checkpoints")
@@ -90,15 +102,16 @@ def run(molecule: str, model: str, steps: str, eval_ps: float, checkpoint: str, 
 
     if "margin" in steps:
         cfg = "/tmp/margin.yml"  # margin_overrides: YAML merged over base.yml, e.g. "{optim: {lr: 1.0e-5}}"
-        Path(cfg).write_text(f"includes: [{ROOT}/configs/margin/base.yml]\n"
+        Path(cfg).write_text(f"includes: [{ROOT}/configs/margin/{margin_cfg}]\n"
                              + dump({**(yaml.safe_load(margin_overrides or "{}") or {}), **pre}))
         sh("python", "scripts/train_stability.py", "--config", cfg, "--molecule", molecule, "--model", model)
         volume.commit()
 
     if "eval" in steps:
         cfg = "/tmp/eval.yml"
-        Path(cfg).write_text(
-            f"includes: [{ROOT}/configs/eval/rmd17_500K.yml]\nsimulate: {{length_ps: {eval_ps}}}\n" + dump(pre))
+        over = yaml.safe_load(eval_overrides or "{}") or {}
+        over.setdefault("simulate", {})["length_ps"] = eval_ps
+        Path(cfg).write_text(f"includes: [{ROOT}/configs/eval/{eval_cfg}]\n" + dump({**over, **pre}))
         cmd = ["python", "scripts/evaluate.py", "--config", cfg, "--molecule", molecule, "--model", model,
                "--tag", tag or f"pretrained_{model}_{molecule}_{eval_ps:g}ps"]
         if checkpoint:
@@ -109,5 +122,7 @@ def run(molecule: str, model: str, steps: str, eval_ps: float, checkpoint: str, 
 
 @app.local_entrypoint()
 def main(molecule: str = "ethanol", model: str = "schnet", steps: str = "prepare,pretrain,eval",
-         eval_ps: float = 100.0, checkpoint: str = "", tag: str = "", margin_overrides: str = "", stage_a: str = ""):
-    run.remote(molecule, model, steps, eval_ps, checkpoint, tag, margin_overrides, stage_a)
+         eval_ps: float = 100.0, checkpoint: str = "", tag: str = "", margin_overrides: str = "", stage_a: str = "",
+         dataset: str = "md17", pretrain_args: str = "", eval_overrides: str = ""):
+    run.remote(molecule, model, steps, eval_ps, checkpoint, tag, margin_overrides, stage_a,
+               dataset, pretrain_args, eval_overrides)

@@ -36,7 +36,7 @@ from mlipstab.data.rmd17 import download, make_splits, reference_pool  # noqa: E
 from mlipstab.units import EV_TO_KCAL_MOL  # noqa: E402
 
 
-def write_split(path, idx, z, R, E, F):
+def write_split(path, idx, z, R, E, F, cell=30.0):
     import lmdb
     from arrays_to_graphs import AtomsToGraphs
 
@@ -45,7 +45,7 @@ def write_split(path, idx, z, R, E, F):
     path.mkdir(parents=True, exist_ok=True)
     db = lmdb.open(str(path / "data.lmdb"), map_size=1099511627776 * 2,
                    subdir=False, meminit=False, map_async=True)
-    lengths, angles = np.ones(3)[None] * 30.0, np.ones(3)[None] * 90.0
+    lengths, angles = np.ones(3)[None] * cell, np.ones(3)[None] * 90.0
     natoms = np.array([R.shape[1]], dtype=np.int64)
     for i, k in enumerate(idx):
         data = a2g.convert(natoms, R[k], z, lengths, angles, E[k:k + 1], F[k])  # energy as (1,), like MD17's (N, 1) rows

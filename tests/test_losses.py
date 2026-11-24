@@ -87,3 +87,11 @@ def test_ula_moves_downhill_without_noise_scale():
     x = torch.full((1, 2, 3), 1.0)
     x_new = ula_step(x, lambda y: 0.5 * (y ** 2).sum(dim=(1, 2)), step_size=0.1, beta=1e12)
     assert torch.allclose(x_new, torch.full((1, 2, 3), 0.9), atol=1e-4)
+
+
+def test_l2mae_is_the_mean_norm_of_the_per_atom_force_error():
+    from mlipstab.mdsim_backend import LOSSES
+
+    pred, target = torch.zeros(2, 2, 3), torch.zeros(2, 2, 3)
+    target[0, 0] = torch.tensor([3.0, 4.0, 0.0])  # one atom off by a vector of length 5, three exact
+    assert LOSSES["l2mae"](pred, target).item() == 1.25

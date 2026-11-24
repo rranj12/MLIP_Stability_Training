@@ -28,6 +28,21 @@ def test_nonbonded_floor_is_hh_pair():
     assert 0.9 < floor[0] < 1.1  # H-H ~1.52 Å minus 0.5
 
 
+def test_bond_statistics_do_not_depend_on_chunking(monkeypatch):
+    from mlipstab.data import bonds as module
+
+    z, coords = water(n=7)
+    bonds, b0 = bond_list(z, coords)
+    pairs, floor = nonbonded_floor(coords, bonds)
+    chunks = module.frame_chunks
+    assert [len(c) for c in chunks(coords, budget=18)] == [2, 2, 2, 1]  # 3 atoms: 9 pairs per frame
+    monkeypatch.setattr(module, "frame_chunks", lambda c: chunks(c, budget=18))
+    bonds2, b02 = bond_list(z, coords)
+    pairs2, floor2 = nonbonded_floor(coords, bonds2)
+    assert (bonds == bonds2).all() and np.allclose(b0, b02)
+    assert (pairs == pairs2).all() and np.allclose(floor, floor2)
+
+
 def test_bond_deviation_and_collision():
     bonds = torch.tensor([[0, 1]])
     pos = torch.tensor([[[0.0, 0, 0], [1.5, 0, 0], [0.2, 0, 0]]])
