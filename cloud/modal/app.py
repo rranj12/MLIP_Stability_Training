@@ -13,6 +13,10 @@ Steps (comma-separated, default prepare,pretrain,eval):
 Large molecules: --pretrain-args="--optim.batch_size=16" is passed to scripts/pretrain.sh, and
 --eval-overrides="{simulate: {n_replicas: 16}}" is merged over the evaluation config.
 
+Lambda sweep (scripts/sweep_lambda.py), one GPU container per (lambda, seed):
+    modal run --detach cloud/modal/app.py::sweep --config configs/sweep/lambda.yml --phase tune
+    modal run --detach cloud/modal/app.py::sweep --config ... --phase final   # once, after reading selection.md
+
 GPU: MLIP_GPU=A100 modal run ...   (default A10G)
 Workspace: modal profile activate <workspace>, or MODAL_PROFILE=<workspace> modal run ...
 Fetch results: modal volume get mlipstab results/eval/<tag> .
@@ -126,3 +130,42 @@ def main(molecule: str = "ethanol", model: str = "schnet", steps: str = "prepare
          dataset: str = "md17", pretrain_args: str = "", eval_overrides: str = ""):
     run.remote(molecule, model, steps, eval_ps, checkpoint, tag, margin_overrides, stage_a,
                dataset, pretrain_args, eval_overrides)
+
+
+# ---------------------------------------------------------------- lambda sweep
+@app.function(gpu=os.environ.get("MLIP_GPU", "A10G"), volumes={"/vol": volume}, timeout=24 * 3600)
+def sweep_job(args: list):
+    """One `scripts/sweep_lambda.py run-one ...` job: Stage B for one (lambda, seed), then its evaluation."""
+    sh("python", "scripts/sweep_lambda.py", *args)
+    volume.commit()
+
+
+def _sweep_cli(*args):
+    out = subprocess.run(["python", "scripts/sweep_lambda.py", *args], cwd=ROOT, check=True,
+                         capture_output=True, text=True)
+    print(out.stderr, end="")
+    return out.stdout
+
+
+@app.function(volumes={"/vol": volume}, timeout=24 * 3600)
+def sweep_driver(config: str, phase: str, force: bool):
+    """Runs remotely so `--detach` keeps the whole sweep going after the laptop disconnects."""
+    import json
+    if phase == "tune":
+        print(_sweep_cli("prepare-tune", "--config", config))
+        volume.commit()
+    jobs = json.loads(_sweep_cli("plan", "--config", config, "--stage", phase, *(["--force"] if force else [])))
+    volume.commit()  # the final lock is written by `plan`
+    print(f"{len(jobs)} jobs")
+    for job, res in zip(jobs, sweep_job.map(jobs, return_exceptions=True)):
+        if isinstance(res, Exception):
+            print("FAILED:", " ".join(job), "->", repr(res))
+    volume.reload()
+    step = ["select", "--config", config, "--allow-missing"] if phase == "tune" else ["summarize", "--config", config]
+    print(_sweep_cli(*step))
+    volume.commit()
+
+
+@app.local_entrypoint()
+def sweep(config: str = "configs/sweep/lambda.yml", phase: str = "tune", force: bool = False):
+    sweep_driver.remote(config, phase, force)

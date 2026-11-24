@@ -33,6 +33,7 @@ sys.path.insert(0, str(ROOT / "src"))
 sys.path.insert(0, str(ROOT / "third_party/StABlE-Training/data"))  # arrays_to_graphs
 
 from mlipstab.data.rmd17 import download, make_splits, reference_pool  # noqa: E402
+from mlipstab.data.tune import tune_pool, write_tune  # noqa: E402
 from mlipstab.units import EV_TO_KCAL_MOL  # noqa: E402
 
 
@@ -68,6 +69,8 @@ def main():
     p.add_argument("--raw_dir", default=str(ROOT / "data/raw/rmd17"))
     p.add_argument("--out_dir", default=str(ROOT / "data/processed"))
     p.add_argument("--seed", type=int, default=0)
+    p.add_argument("--tune_frames", type=int, default=1000,
+                   help="frames outside the official lists, for hyperparameter selection")
     args = p.parse_args()
 
     npz, train_idx, test_idx = download(args.molecule, args.raw_dir, args.split)
@@ -92,6 +95,9 @@ def main():
         "e_mean": E[splits["train"]].mean(), "e_std": E[splits["train"]].std(),
         "f_mean": F[splits["train"]].mean(), "f_std": F[splits["train"]].std(),
     })
+    # tune/: frames outside the official lists, for hyperparameter selection (sweep_lambda.py)
+    splits["tune"] = tune_pool(len(R), np.concatenate([train_idx, test_idx]), args.tune_frames, seed=args.seed)
+    write_tune(base / "1k", splits["tune"], z, R, E, F)
     np.save(base / "1k" / "splits", splits)
 
     ref = base / "10k"

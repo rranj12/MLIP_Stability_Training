@@ -1,0 +1,68 @@
+# Lambda sweep for the margin loss (scripts/sweep_lambda.py).
+# Each system resolves as datasets[<dataset>] <- defaults <- its own entry; any field can be
+# overridden per system. All paths are relative to the repository root.
+# Every system needs a Stage A checkpoint first (cloud/modal/app.py --steps prepare,pretrain).
+
+name: margin_lambda
+# results_dir: results/sweeps      # outputs: <results_dir>/<name>/<system id>/
+
+datasets:
+  md17:                            # rMD17 (scripts/prepare_rmd17.py)
+    data: {src: data/processed, name: md17, size: 1k}
+    train: {config: configs/margin/base.yml}
+    select_eval: {config: configs/eval/rmd17_500K.yml}
+    final_eval: {config: configs/eval/rmd17_500K.yml}
+    tune_split:
+      n_frames: 1000
+      backfill:                    # builds tune/ for data prepared before the prep script wrote it
+        path: data/raw/rmd17/rmd17_{molecule}.npz
+        keys: {z: nuclear_charges, R: coords, E: energies, F: forces}
+        unit: kcal/mol
+  md22:                            # MD22 (scripts/prepare_md22.py writes tune/ itself)
+    data: {src: data/processed, name: md22, size: 1k}
+    train: {config: configs/margin/md22.yml}
+    select_eval: {config: configs/eval/md22_500K.yml}
+    final_eval: {config: configs/eval/md22_500K.yml}
+    tune_split: {n_frames: 1000}
+
+defaults:
+  dataset: md17
+  pretrained_dir: null             # Stage A root; null = results/checkpoints/qm_pretrained
+  train:
+    overrides:                     # Stage B settings from the milestone runs
+      simulate: {max_ps: 20.0}
+      stage_b: {n_cycles: 3, batch_labeled: 100, guardrail_rel: 0.15, stop_fail_frac: 0.01}
+      optim: {lr: 1.0e-5}
+  select_eval:
+    overrides:                     # tune frames only; replica count comes from the dataset's eval config
+      data: {start_split: tune}
+      accuracy: {split: tune}
+      observables: {reference_split: tune}
+      simulate: {length_ps: 100}
+      nve: null
+  final_eval:
+    overrides: {}                  # the dataset's eval config as is: test frames, 300 ps
+
+systems:
+  - {molecule: ethanol, model: schnet}
+  - {molecule: aspirin, model: schnet}
+  # - {molecule: aspirin, model: nequip}
+  # - {molecule: aspirin, model: gemnet_t}
+  # - {dataset: md22, molecule: AT_AT_CG_CG, model: schnet}          # 118 atoms
+  # - {dataset: md22, molecule: buckyball_catcher, model: schnet}    # 148 atoms
+  # - {dataset: md22, molecule: double_walled_nanotube, model: schnet,  # 370 atoms
+  #    train: {overrides: {simulate: {n_replicas: 16}}},
+  #    select_eval: {overrides: {simulate: {n_replicas: 16}}},
+  #    final_eval: {overrides: {simulate: {n_replicas: 16}}}}
+
+grid:
+  lam: [0, 1.0e-4, 3.0e-4, 1.0e-3, 3.0e-3, 1.0e-2, 3.0e-2]   # 0 = control, required
+  seeds: [0, 1]
+
+select:
+  mode: shared                     # shared: one λ for all systems | per_system
+  criterion: combined              # combined (bond failure or collision) | bond_only
+  acc_tol: 0.05                    # max force-MAE increase over the λ = 0 control
+
+final:
+  seeds: [0, 1, 2]

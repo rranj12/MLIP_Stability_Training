@@ -22,6 +22,7 @@ criteria:                      # `bond_only` in metrics.json is the Fu et al. (a
   nonbonded_tol: 0.5           # Å below the closest training distance for that pair; adds to `combined` only
 
 observables:
+  reference_split: test        # DFT frames for the h(r) / dihedral reference; `tune` during selection
   rdf_bins: {start: 0.0, stop: 10.0, step: 0.02}
   dihedrals:                   # 0-based atom indices in rMD17 order, from the training-frame bond graph
     ethanol: [5, 1, 0, 2]      # H(methyl)-C-C-O (CRMSE Fig. 11)

@@ -136,7 +136,7 @@ def main():
     frames[np.arange(len(frames))[:, None] >= first[None]] = np.nan
     np.save(out / "traj.npy", frames.astype(np.float32))
     stable = frames[np.isfinite(frames).all(axis=(2, 3))]  # (n_stable, N, 3)
-    ref = backend.data["test"]["R"]
+    ref = backend.data[cfg["observables"].get("reference_split", "test")]["R"]
     r = cfg["observables"]["rdf_bins"]
     bins = np.arange(r["start"], r["stop"] + r["step"] / 2, r["step"])
     metrics["n_stable_frames"] = int(len(stable))
