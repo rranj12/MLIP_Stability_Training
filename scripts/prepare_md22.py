@@ -6,7 +6,8 @@
 MD22 has no official splits. Frames are drawn at random (seeded): n_train for training
 (default 950, as in our rMD17 "1k" split, so molecules of different size are compared at
 the same training-set size), 50 for validation and 1,000 for testing. Labels are converted
-to eV and eV/Å.
+to eV and eV/Å. Up to 1,000 of the remaining frames form the tune split, which is used
+only to select hyperparameters (scripts/sweep_lambda.py).
 
 The dummy cell is 100 Å, not the 30 Å StABlE writes. SchNet and GemNet-T build their graph
 with MDsim's periodic neighbor search, so no periodic image may ever come within the
@@ -32,6 +33,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
 from prepare_rmd17 import write_split  # noqa: E402
+from mlipstab.data.tune import tune_pool, write_tune  # noqa: E402
 from mlipstab.units import EV_TO_KCAL_MOL  # noqa: E402
 
 URL = "https://www.quantum-machine.org/gdml/data/npz/"
@@ -59,6 +61,8 @@ def main():
     p.add_argument("--raw_dir", default=str(ROOT / "data/raw/md22"))
     p.add_argument("--out_dir", default=str(ROOT / "data/processed"))
     p.add_argument("--seed", type=int, default=0)
+    p.add_argument("--tune_frames", type=int, default=1000,
+                   help="frames outside train/val/test, for hyperparameter selection")
     args = p.parse_args()
 
     npz = Path(args.raw_dir) / FILES[args.molecule]
@@ -85,6 +89,8 @@ def main():
         "e_mean": E[train].mean(), "e_std": E[train].std(),
         "f_mean": F[train].mean(), "f_std": F[train].std(),
     })
+    splits["tune"] = tune_pool(len(R), perm, args.tune_frames, seed=args.seed)
+    write_tune(base, splits["tune"], z, R, E, F)
     np.save(base / "splits", splits)
     print(f"wrote {base}")
 

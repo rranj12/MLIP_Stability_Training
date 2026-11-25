@@ -57,7 +57,8 @@ class MDSimBackend:
         self.e_shift = 0.0  # NequIP's rescale layers return absolute energies
         root, d = Path(root), cfg["data"]
         base = root / d["src"] / d["name"] / molecule / d["size"]
-        self.data = {s: dict(np.load(base / s / "nequip_npz.npz")) for s in ("train", "val", "test")}
+        self.data = {s: dict(np.load(base / s / "nequip_npz.npz")) for s in ("train", "val", "test", "tune")
+                     if s != "tune" or (base / s / "nequip_npz.npz").exists()}  # tune: selection starts, optional
         z = self.data["train"]["z"]
         self.n_atoms = len(z)
 
