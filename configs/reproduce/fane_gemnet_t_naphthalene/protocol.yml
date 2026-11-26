@@ -1,5 +1,5 @@
 # Experiment manifest, NOT a trainer input.
-status: prepared_not_launched
+status: timing_pilot_completed_full_training_not_launched
 source:
   repository: https://github.com/kyonofx/MDsim
   commit: 61ca2cfba373fd374343592556789fa30fbe3b56
@@ -18,6 +18,12 @@ data:
   train: 9500
   validation: 500
   test: 10000
+  upstream_loader_train: 9499
+  upstream_loader_validation: 499
+  upstream_loader_test: 9999
+  loader_note: released LMDB length stores the last index; unmodified upstream loader
+    omits one record per split. Preserved for protocol reproduction.
+  archive_md5_verified: 2f895e74a32793e37da43b961ce8edb2
   split_random_state: 123
   energy_units: eV
   force_units: eV/Angstrom
@@ -71,13 +77,47 @@ environment_reference:
   python: 3.9.11
   torch: 1.11.0+cu113
   cuda: '11.3'
-  pyg: authors README nightly, not a uniquely pinned version
+  pyg: 2.0.5.dev20220418 (pyg-nightly, pinned by authors README)
   ase: authors README nightly/master, not a uniquely pinned version
   paper_gpu: V100 PCIe
-  proposed_gpu: A100-80GB; hardware differs, throughput unmeasured
+  pilot_gpu: NVIDIA A100-SXM4-80GB; hardware differs from paper
+environment_pilot:
+  python: 3.9.23
+  modal_host_python: '3.11'
+  torch: 1.11.0+cu113
+  pyg: 2.0.5.dev20220418
+  ase: 3.22.1
+  cusparse_cuda_11_3: 11.6.0.109
+  cudart_cuda_11_3: 11.3.109
+timing_pilot:
+  app_id: ap-6Z5bqxkgwjrM0ZVsRCTJBk
+  cpu_verification_app_id: ap-rpHM9Qu10g0XtfaQ62YLDc
+  apps_stopped: true
+  artifacts: /vol/results/reproduce/fane_gemnet_t_naphthalene/pilot_seed0_retry1
+  epochs: 1
+  updates: 9499
+  upstream_loop_s: 1362.63454580307
+  training_process_s: 1380.069746182
+  gpu_function_s: 1381.67043413
+  prior_failed_gpu_function_s: 2.478763411
+  cumulative_recorded_gpu_function_s: 1384.149197541
+  gpu_compute_estimate_usd: 0.9605995431
+  validation_force_mae_eV_A: 0.01764286431527957
+  validation_energy_mae_eV: 0.04821361472945892
+  cpu_ase_checkpoint_reload: passed
+  optimizer_states_finite_and_steps_verified: true
+  md_steps: 0
+  margin_updates: 0
+  convergence_demonstrated: false
 budget:
   launch_authorized: false
-  training_gpu_hours_measured: false
+  one_epoch_pilot_authorized: true
+  pilot_gpu_timeout_s: 3300
+  pilot_subprocess_stop_s: 3150
+  pilot_prior_attempt_reserved_s: 300
+  pilot_retries: 0
+  training_gpu_hours_measured: true
+  measured_scope: one epoch only; convergence cost unknown
   a100_80gb_usd_per_second: 0.000694
   a100_40gb_usd_per_second: 0.000583
   pricing_checked_local_date: '2026-11-25'
@@ -94,17 +134,16 @@ budget:
   - hours: 168
     A100_80GB_usd: 419.73
     A100_40GB_usd: 352.6
-  execution_cap: not configured; scientific seven-day stop is epoch-boundary based,
-    not a hard cloud spending cap
+  execution_cap: pilot completed under capped budget; full-training cloud cap is not
+    configured or authorized. Scientific seven-day stop is epoch-boundary based.
 open_items:
 - Reconcile October 2024 corrected manuscript with arXiv v2 results; the current OpenReview
   PDF was inaccessible.
-- Prepare original MD17 data and validate split sizes; no data download performed
-  in this setup.
-- Create and validate separate upstream environment; current StABlE Modal image is
-  not an exact historical environment.
+- Obtain full original MD17 reference trajectory for the notebook bond-length metric;
+  the released training/validation/test splits are prepared and validated.
 - Implement and validate the audited notebook bond metric in the reproduction runner;
   native upstream temperature early_stop is not that metric.
-- Measure matching batch-size-1 throughput and agree execution budget before launching.
+- Agree a full-training execution budget using measured pilot throughput; convergence
+  duration remains unknown. Do not launch full training or sweeps yet.
 - MD17 is described as nonperiodic in the paper, but upstream uses a 30 Angstrom box
   with PBC flags; preserve/audit actual source behavior rather than silently substitute.

@@ -9,7 +9,11 @@ the essential decisions and results are recorded here so they can travel with Gi
 
 - Paper-baseline replication configs are prepared and statically validated:
   [setup, cost scenarios and remaining prerequisites](fane_reproduction.md).
-  Original MD17 data/environment preparation and training are **not launched**.
+  Original MD17 data/environment preparation and the **single-epoch timing pilot
+  completed**: 9,499 updates, **23.03 minutes GPU function time**, approximately
+  **$0.96 GPU compute** including the failed import attempt (CPU/RAM extra).
+  Validation force MAE: **17.64 meV/Å**. CPU checkpoint/ASE inference passed.
+  All pilot apps are stopped. This is not a converged baseline or an MD result.
 - Full sweeps have **not** been launched. Only bounded GemNet-T/naphthalene smoke
   tests are authorized so far. Aspirin and independent campaign seeds 0–2 remain unrun.
 - GemNet-T uses the full 1,891,025-parameter architecture, not a reduced toy model.
@@ -27,7 +31,83 @@ the essential decisions and results are recorded here so they can travel with Gi
   The subsequent distortion/loss/optimizer targeted check passed **17 tests**.
 - Fixes, configs, tests and this handoff were committed and pushed as `6ffeab0` on
   `fix/margin-scale-and-bond-only-eval`. The final 20 ps diagnostic outcome below
-  is included in a follow-up documentation commit. No further GPU work is running.
+  is included in a follow-up documentation commit. The new reproduction pilot is
+  tracked in the entry below; full training and all sweeps remain prohibited.
+
+## 2026-11-25 — Original MD17 environment and one-epoch timing pilot
+
+- Authorization: prepare the original MD17 naphthalene data and environment,
+  then run exactly one GemNet-T epoch; at most one GPU hour, no full training or
+  lambda sweep. This tests training throughput and checkpoint production. It
+  performs **no MD simulation** and cannot reproduce the reported failure time.
+- Added a separate Modal runner, `cloud/modal/fane_pilot.py`, and isolated-environment
+  script, `scripts/fane_pilot.py`. They use pinned upstream MDsim, the authors'
+  checksum-verified preprocessed release, batch size 1, seed 0 and standard loss.
+- Data checks and a full-model energy/force backward pass run on CPU before GPU
+  allocation. Initially the GPU function had no automatic retries and a hard
+  3,600-second timeout, with a 3,450-second subprocess stop; the corrected attempt's
+  reduced caps are recorded below. Logs and
+  partial outputs are committed to the volume every 30 seconds.
+- First image build was rejected because modern Modal no longer accepts Python
+  3.9 as its host runtime; **zero GPU time** was used. The historical environment
+  now runs in an isolated Python 3.9.23 environment within a Python 3.11 Modal host.
+- Corrected an earlier documentation error: the upstream README specifies
+  `pyg-nightly==2.0.5.dev20220418`. ASE master remains historically unpinned;
+  the pilot explicitly selects ASE 3.22.1. Torch remains 1.11.0+cu113.
+- CPU build checks resolved TensorBoard 2.9.1's protobuf requirement with
+  protobuf 3.19.6, then caught missing `libcusparse.so.11`. Added NVIDIA's CUDA
+  11.3 cuSPARSE 11.6.0.109 and cudart 11.3.109 runtime packages. Upstream imports
+  pass without changing its model/training source; failed builds used no GPU.
+- The first CPU download was stopped at approximately 40 MB/min. Confirmed
+  Zenodo supports HTTP ranges and switched to eight disjoint ranges, checking
+  each response range/length and the published MD5 of the entire assembled file.
+  This preserves the authors' released data and avoids regenerating a different split.
+- Data download/checksum and CPU model checks passed. Stored counts are
+  9,500/500/10,000; upstream exposes **9,499/499/9,999** because the release's
+  LMDB length is the last index. Preserved the original behavior and verified
+  NPZ/LMDB sample agreement, finite arrays and the 1,891,025-parameter model's
+  energy/force backward pass.
+- The first GPU attempt failed during import, **before any optimizer update**:
+  GPU runtime did not resolve cuSPARSE through the build's loader cache. Its
+  recorded function work lasted 2.479 s. Added an explicit CUDA 11.3 library
+  search path and retained that failed attempt under `pilot_seed0/`.
+- The corrected attempt uses `pilot_seed0_retry1/`, a **3,300-second hard GPU cap**
+  and 3,150-second subprocess stop. Reserved 300 seconds for the first failed
+  invocation/startup, keeping the combined GPU allowance below one hour. No
+  automatic retries; both attempts use seed 0 and only the second reaches training.
+- **Completed:** exactly **one epoch / 9,499 updates**, batch 1, model seed 0,
+  NVIDIA A100-SXM4-80GB. Upstream training+validation loop: **1,362.635 s**;
+  training subprocess: **1,380.070 s**; successful GPU function: **1,381.670 s**.
+  Successful + failed recorded GPU-function work totals **1,384.149 s / 23.07 min**,
+  approximately **$0.9606 GPU-only** at $0.000694/s. These are measured code runtimes
+  and rate-based estimates, not an invoice; container startup, CPU/RAM, storage and
+  credits are separate. Cumulative GPU use stayed comfortably below the one-hour cap.
+- EMA checkpoint validation on 499 examples: force MAE **0.017642864 eV/Å
+  (17.642864 meV/Å)**, energy MAE **0.048213615 eV**. This is validation accuracy
+  after one epoch, not the paper's final test result or evidence of convergence.
+- Reloaded the EMA checkpoint through upstream `OCPCalculator` on **CPU** and
+  predicted finite energy/forces for one test structure (18×3 forces). All saved
+  raw optimizer tensors were finite and all state step counters were **9,499**.
+  **0 MD steps; 0 margin updates; no full training or sweep.**
+- Artifacts: volume `mlipstab`,
+  `results/reproduce/fane_gemnet_t_naphthalene/pilot_seed0_retry1/` (same relative
+  path under ignored local `results/`). Includes raw optimizer checkpoint, EMA
+  checkpoint, resolved configs, pip freeze, GPU identity, complete train log,
+  `result.json` and `cpu_checkpoint_verification.json`. Data provenance/validation
+  are under `data/forces_not_enough/md17/naphthalene/10k/` on the volume.
+- Training app `ap-6Z5bqxkgwjrM0ZVsRCTJBk`, CPU verification app
+  `ap-rpHM9Qu10g0XtfaQ62YLDc`, and all setup/failed apps are **stopped, 0 tasks**.
+- Verification: actual upstream one-epoch GPU train/validation, CPU reload and
+  single-point ASE inference, Python compilation, cap/one-epoch/CPU-only-verification
+  configuration checks and `git diff --check`. Existing unrelated tests were not rerun.
+- Measured planning scale: roughly **38 hours / $95 GPU compute per 100 epochs**
+  at this pace, before CPU/RAM. This does not predict epochs to convergence.
+  Full training and MD evaluation need a separate budget/authorization.
+- Replication status: training protocol closely matched; **MD simulation not run**.
+  Later MD is configured for the authors' 500 K Nosé–Hoover, 0.5 fs, five test starts
+  and 300 ps horizon. Full-reference bond means and the audited failure-metric runner
+  still need preparation. Python patch/ASE/hardware/seed provenance and the 2024
+  corrected-code versus older-paper result remain disclosed differences.
 
 ## 2026-11-25 — Repository and experiment direction
 
