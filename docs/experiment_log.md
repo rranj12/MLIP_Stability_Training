@@ -7,6 +7,9 @@ the essential decisions and results are recorded here so they can travel with Gi
 
 ## Current status
 
+- Paper-baseline replication configs are prepared and statically validated:
+  [setup, cost scenarios and remaining prerequisites](fane_reproduction.md).
+  Original MD17 data/environment preparation and training are **not launched**.
 - Full sweeps have **not** been launched. Only bounded GemNet-T/naphthalene smoke
   tests are authorized so far. Aspirin and independent campaign seeds 0–2 remain unrun.
 - GemNet-T uses the full 1,891,025-parameter architecture, not a reduced toy model.
@@ -534,3 +537,52 @@ learned energy surface or failure time. The smoke checkpoint's validation force
 MAE is ~370 meV/Å; the downloaded paper reports 1.5 meV/Å for its GemNet-T naphthalene
 model on a different MD17 test set. These are not matched evaluations, but they
 underscore that we have not recreated the paper's trained baseline.
+
+## 2026-11-25 — Paper-baseline configs and cost estimate (no launch)
+
+User requested GemNet-T/naphthalene replication preparation, time/cost estimates,
+and clarification of the margin-gradient result. Explicit instruction: **do not launch**.
+
+Prepared `configs/reproduce/fane_gemnet_t_naphthalene/{train,simulate,protocol}.yml`
+and [the reproduction handoff](fane_reproduction.md). Configs target pinned authors'
+MDsim commit `61ca2cfba373fd374343592556789fa30fbe3b56`, not the current StABlE
+wrappers. Original MD17 paths are isolated under `/vol/data/forces_not_enough/`.
+Training uses the 9,500/500 split, batch 1, full GemNet-T, original optimizer/loss/
+scheduler settings and EMA checkpoint. Paper epoch limit 2,000 takes precedence
+over the released YAML's 10,000; discrepancy is explicit. Simulation uses the
+published 500 K NoseHoover / 0.5 fs / ttime 20 / 600,000-step protocol. Five test
+starts/seeds are predeclared local choices, not claimed to be the paper's exact seeds.
+No margin term is included in this baseline.
+
+Further source audit corrected an important reproduction detail: the MD17 section
+of `observable.ipynb` builds connectivity from the first simulated frame using
+ASE natural cutoffs and computes equilibrium mean lengths over the **full original
+MD17 reference trajectory**, not just training data. It uses 30 Å periodic distances
+and a 0.5 Å criterion. Native simulator `early_stop` instead indicates a temperature
+outside 0.1–100,000 K. The manifest records the original metric; a validated analysis
+step is still needed before the complete reproduction pipeline can be called ready.
+The existing rMD17 `evaluate.py` must not be used as though it supported NoseHoover.
+
+Validation was CPU/configuration-only: loaded configs through the pinned upstream
+pure config parser and argparse logic; all **26 model fields match**, optimizer
+fields match except the documented paper epoch cap, simulation fields match except
+isolated paths, expected checkpoint path resolves, and five seeds/starts are distinct
+and valid. `git diff --check` passed. No model was initialized, no data downloaded,
+and no Modal function, timing pilot, training or sweep was invoked.
+
+Cost reference rechecked at https://modal.com/pricing on November 25:
+A100 80 GB **$2.4984/hour**, 40 GB **$2.0988/hour**, GPU only. Illustrative durations:
+24 h = **$59.96 / $50.37**; 72 h = **$179.88 / $151.11**; 168 h = **$419.73 / $352.60**
+(80 / 40 GB respectively), before CPU/RAM, storage, overhead and credits.
+These are budget scenarios, not a measured convergence forecast. Batch-size-1
+throughput and epochs-to-convergence are unknown. The old 12.15-second smoke epoch
+used batch 8 and only 950 frames. Paper setup is roughly 9,500 updates per epoch,
+up to 19 million for 2,000 epochs; training may take days. The seven-day trainer
+limit is checked at epoch boundaries and is not a cloud spending cap. A separately
+authorized timing pilot and bounded execution plan should precede a full launch.
+
+Clarification: the prior gradient probe tested **our same kT-scaled softplus margin
+loss**, with a larger diagnostic target margin m so its penalty was active on the
+synthetic pairs. Descent increased U(distorted)−U(anchor); the formula and production
+defaults were not changed. Mixed energy/force-plus-margin updates at lambda 1 showed
+negligible benefit, so this is not evidence of improved MD stability.

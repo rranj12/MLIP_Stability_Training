@@ -1,0 +1,110 @@
+# Experiment manifest, NOT a trainer input.
+status: prepared_not_launched
+source:
+  repository: https://github.com/kyonofx/MDsim
+  commit: 61ca2cfba373fd374343592556789fa30fbe3b56
+  paper_reference: https://arxiv.org/pdf/2210.07237v2
+  sha256:
+    configs/md17/base.yml: 06d370b7a52f9549bd85fc021c615a99fd44d5bf512e7c4843f3a4e9fc603ae6
+    configs/md17/gemnet-T.yml: d95090f726c9bdce5f5d0376f71e916051807b852ceb25553203d86f929eaf7b
+    configs/md17/gemnet-T-scale.json: b237f00f7c79ac3a24483af9dea5a08362b2852fc398b9feabcbaa75aefb6ced
+    configs/simulate/naphthalene.yml: 7d2a669300f70753502dacee2db269107e83866b6376f94e44fd738375e5ff39
+  observable_code_sha256: c0a0b4330db83861bf0a135ec8518528aca44b92be82e3ccee1e02c80dfc0364
+data:
+  kind: original_MD17_not_rMD17
+  archive: https://zenodo.org/records/7196767
+  root: /vol/data/forces_not_enough/md17
+  molecule: naphthalene
+  train: 9500
+  validation: 500
+  test: 10000
+  split_random_state: 123
+  energy_units: eV
+  force_units: eV/Angstrom
+training:
+  model_seed: 0
+  model_seed_provenance: upstream CLI default; original reported checkpoint seed not
+    established
+  run_dir: /vol/results/reproduce/fane_gemnet_t_naphthalene
+  identifier: seed0
+  paper_max_epochs: 2000
+  upstream_yaml_max_epochs: 10000
+  early_stopping_time_s: 604800
+  evaluation_checkpoint: checkpoints/best_checkpoint.pt
+  checkpoint_weights: upstream EMA export, not our best_training_checkpoint.pt
+evaluation:
+  replicas:
+  - seed: 123
+    init_idx: 857
+  - seed: 124
+    init_idx: 4385
+  - seed: 125
+    init_idx: 1428
+  - seed: 126
+    init_idx: 6672
+  - seed: 127
+    init_idx: 4367
+  replica_provenance: local predeclared choices; paper specifies five random test
+    starts, not these exact seeds/indices
+  horizon_ps: 300
+  time_step_fs: 0.5
+  save_every_steps: 100
+  bond_deviation_threshold_A: 0.5
+  criterion: first saved frame with max bonded absolute length deviation from equilibrium
+    mean > threshold
+  equilibrium_reference: mean bond lengths over the full original MD17 reference trajectory,
+    matching authors observable.ipynb (not our training-only mean)
+  report: individual first-failure times, censored flags, mean and SD across five
+    replicas
+  expected_reference_only:
+    force_mae_meV_A: 1.5
+    stability_mean_ps: 8
+    stability_sd_ps: 2
+  upstream_runtime_stop: temperature outside 0.1–100000 K; do not call this the paper
+    bond-failure time
+  topology: ASE NeighborList(natural_cutoffs(first_simulation_frame), self_interaction=False),
+    other defaults unchanged; freeze discovered pairs per trajectory
+  distance: authors distance_pbc with 30 Angstrom cubic cell
+  analysis_source: MD17 section of pinned observable.ipynb; preserve and audit frame/log
+    alignment
+environment_reference:
+  python: 3.9.11
+  torch: 1.11.0+cu113
+  cuda: '11.3'
+  pyg: authors README nightly, not a uniquely pinned version
+  ase: authors README nightly/master, not a uniquely pinned version
+  paper_gpu: V100 PCIe
+  proposed_gpu: A100-80GB; hardware differs, throughput unmeasured
+budget:
+  launch_authorized: false
+  training_gpu_hours_measured: false
+  a100_80gb_usd_per_second: 0.000694
+  a100_40gb_usd_per_second: 0.000583
+  pricing_checked_local_date: '2026-11-25'
+  gpu_only_scenarios:
+  - hours: 12
+    A100_80GB_usd: 29.98
+    A100_40GB_usd: 25.19
+  - hours: 24
+    A100_80GB_usd: 59.96
+    A100_40GB_usd: 50.37
+  - hours: 72
+    A100_80GB_usd: 179.88
+    A100_40GB_usd: 151.11
+  - hours: 168
+    A100_80GB_usd: 419.73
+    A100_40GB_usd: 352.6
+  execution_cap: not configured; scientific seven-day stop is epoch-boundary based,
+    not a hard cloud spending cap
+open_items:
+- Reconcile October 2024 corrected manuscript with arXiv v2 results; the current OpenReview
+  PDF was inaccessible.
+- Prepare original MD17 data and validate split sizes; no data download performed
+  in this setup.
+- Create and validate separate upstream environment; current StABlE Modal image is
+  not an exact historical environment.
+- Implement and validate the audited notebook bond metric in the reproduction runner;
+  native upstream temperature early_stop is not that metric.
+- Measure matching batch-size-1 throughput and agree execution budget before launching.
+- MD17 is described as nonperiodic in the paper, but upstream uses a 30 Angstrom box
+  with PBC flags; preserve/audit actual source behavior rather than silently substitute.
