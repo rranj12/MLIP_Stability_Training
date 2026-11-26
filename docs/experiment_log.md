@@ -109,6 +109,31 @@ the essential decisions and results are recorded here so they can travel with Gi
   still need preparation. Python patch/ASE/hardware/seed provenance and the 2024
   corrected-code versus older-paper result remain disclosed differences.
 
+## 2026-11-25 — Proposed training budget after timing pilot (not authorized)
+
+- User requested an estimate/recommendation only; **do not launch**. No new
+  training, simulation or sweep was started, and no execution config was changed.
+- At approximately 23 minutes/epoch, one model/seed costs about $2.81/hour with
+  the same A100 80 GB, four CPU cores and 16 GiB RAM allocation, using current
+  [Modal rates](https://modal.com/pricing). Before credits, storage and overhead:
+  20 epochs ≈7.7 h/$22; 50 ≈19.2 h/$54; 100 ≈38.3 h/$108; 200 ≈76.7 h/$216.
+  MD evaluation is additional and its matching-protocol throughput is unmeasured.
+- Recommendation: an **8-GPU-hour first block**, with approximately **$25** reserved;
+  review validation MAE and learning-rate history, then consider extensions up to
+  **48 GPU hours total / approximately $140**, roughly 125 epochs at this pace.
+  These are proposed spending limits, not a convergence forecast or authorization.
+- Preserve the original optimizer, EMA and LR schedule and resume the matching
+  raw training checkpoint. Judge progress on validation, allowing LR reductions
+  to work; do not select checkpoints by whether they fail quickly in MD. Select
+  the EMA checkpoint by validation before final held-out test/MD evaluation.
+- One epoch's 17.64 meV/Å validation MAE does not establish how long it takes to
+  approach the older paper's 1.5 meV/Å final **test** result. Neither 100 nor 200
+  epochs is guaranteed sufficient. Seven days on this allocation would be about
+  $473 including requested CPU/RAM, and is not the same hardware budget as seven
+  V100 days. Reconcile the corrected paper/code version before a larger commitment
+  or a strict replication claim. A class-project comparison can proceed with a
+  disclosed training budget, but that alone does not reproduce the paper's baseline.
+
 ## 2026-11-25 — Repository and experiment direction
 
 1. Pulled/merged main into `fix/margin-scale-and-bond-only-eval`; local merge commit
