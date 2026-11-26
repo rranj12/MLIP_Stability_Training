@@ -4,6 +4,13 @@ source:
   repository: https://github.com/kyonofx/MDsim
   commit: 61ca2cfba373fd374343592556789fa30fbe3b56
   paper_reference: https://arxiv.org/pdf/2210.07237v2
+  verified_eic_revision_pdf: https://openreview.net/notes/edits/attachment?id=yveYNGOUOK&name=pdf
+  verified_eic_revision_date: '2024-10-29'
+  verified_eic_pdf_sha256: bc3b3771d17a69e456daea2e4a5e407beff110d24e7420409659f1807e93c595
+  verified_eic_supplement_sha256: 2ff9af924ab89a1b7cf173d2ec8c8c42bf262b7c6dbc7a1e117784033dc795f2
+  correction_audit: Table 3 page 8 retains GemNet-T naphthalene 8 +/- 2 ps and
+    force MAE 1.5 meV/Angstrom. Supplement has no weights, lacks wrapping fix,
+    and defaults energy loss to MSE versus current GitHub MAE; exact run unresolved.
   sha256:
     configs/md17/base.yml: 06d370b7a52f9549bd85fc021c615a99fd44d5bf512e7c4843f3a4e9fc603ae6
     configs/md17/gemnet-T.yml: d95090f726c9bdce5f5d0376f71e916051807b852ceb25553203d86f929eaf7b

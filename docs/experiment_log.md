@@ -7,6 +7,11 @@ the essential decisions and results are recorded here so they can travel with Gi
 
 ## Current status
 
+- **Correction resolved at the paper-table level:** the PDF attached to the October
+  29, 2024 EIC revision retains GemNet-T/naphthalene **8 ± 2 ps**, force MAE
+  **1.5 meV/Å**. Its supplement contains code/configs but no trained checkpoint,
+  and differs from current GitHub (including energy-loss MSE versus MAE). Exact
+  checkpoint/run provenance is still missing. No further compute is authorized.
 - The capped original-MD17 one-epoch EMA checkpoint MD diagnostic completed:
   **20 ps, one trajectory, zero detected bond failures and zero failure pairs**.
   Largest saved-frame deviation **0.21695 Å**, below the benchmark's **0.5 Å**.
@@ -38,6 +43,29 @@ the essential decisions and results are recorded here so they can travel with Gi
   `fix/margin-scale-and-bond-only-eval`. The final 20 ps diagnostic outcome below
   is included in a follow-up documentation commit. The new reproduction pilot is
   tracked in the entry below; full training and all sweeps remain prohibited.
+
+## 2026-11-26 — Revision PDF and supplement obtained
+
+- The user's revision-specific OpenReview links succeeded. Downloaded the
+  October 29, 2024 EIC attachment PDF and ZIP; hashes and sources are recorded in
+  [the revision audit](fane_reproduction.md#october-2024-revision-obtained-2026-11-26).
+- **Table 3, page 8 retains GemNet-T/naphthalene 8 ± 2 ps and 1.5 meV/Å.**
+  Text extraction and a rendered-page visual check agree. The older suggestion
+  that the correction may have removed this reported result is now resolved:
+  the revised publication retains it. This does not prove which MD17 runs were
+  rerun or explain why our unmatched one-epoch checkpoint survived 20 ps.
+- The document is materially revised: Table 8 Water-1k GemNet-T stability changed
+  from 6 ± 7 to 391 ± 132 ps. Do not generalize that change to naphthalene.
+- The supplement has 95 source/config files after excluding directory/macOS
+  metadata entries, and no checkpoint, run logs, trajectories or scale JSONs.
+  It lacks coordinate wrapping and defaults GemNet energy loss to MSE; current
+  GitHub explicitly uses MAE. Dependency pins differ too. Both sources retain the
+  checkpoint-selection ambiguity. The exact published run remains unidentified.
+- Revised the unsent author request to ask for the actual evaluation weights and
+  config, resolve source differences, and obtain the five initial conditions and
+  failure times. No training, MD, cloud jobs or messages were launched/sent.
+- The prior search entries below are historical; their PDF-access/unknown-table
+  statements are superseded by this entry. No extra PDF upload is needed now.
 
 ## 2026-11-26 — Search for corrected paper and published checkpoint
 

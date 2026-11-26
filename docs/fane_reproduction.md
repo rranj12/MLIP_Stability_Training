@@ -1,7 +1,9 @@
 # GemNet-T / naphthalene protocol reproduction
 
-Target: the GemNet-T naphthalene entry in *Forces are not Enough*, Table 3 of the
-user's downloaded / arXiv v2 paper: 1.5 meV/Å force MAE and 8 ± 2 ps stability.
+Target: the GemNet-T naphthalene entry in *Forces are not Enough*, Table 3:
+1.5 meV/Å force MAE and 8 ± 2 ps stability. **Verified November 26: the PDF
+attached to the October 29, 2024 EIC revision retains these values.** See the
+[revision audit below](#october-2024-revision-obtained-2026-11-26).
 These are reference observations, not guaranteed outcomes or training targets to
 select runs against. Original MD17 data and the isolated environment are prepared;
 a one-epoch timing pilot **completed** within a cumulative one-GPU-hour cap.
@@ -151,8 +153,9 @@ overwrite this completed diagnostic. See the ongoing log for the app and full au
 This matches the documented **MD recipe**, with explicitly noted implementation
 details, on a **one-epoch** checkpoint. It is not a replication of the paper's
 converged checkpoint, five 300-ps trajectories, final test accuracy, or its older
-8 ± 2 ps result. More training is not guaranteed to create failures. Reconcile the
-2024 correction before funding a longer training run on that assumption.
+8 ± 2 ps result. More training is not guaranteed to create failures. The revision
+now confirms that reported value; obtain the actual checkpoint/run provenance
+before funding a longer training run on the assumption it will reproduce it.
 
 ## Remaining replication differences
 
@@ -162,8 +165,10 @@ Other differences are recorded rather than silently chosen:
   says 10,000. Prepared config follows the paper's 2,000. Do not assume either limit
   identifies the exact training length of the published checkpoint.
 - **2024 correction:** pinned upstream includes the periodic-coordinate wrapping fix.
-  The downloaded paper is arXiv v2; the corrected OpenReview manuscript was inaccessible
-  in prior checks. Verify its current table before claiming strict replication.
+  The October 29, 2024 revision PDF is now obtained and its naphthalene result is
+  unchanged. Its attached supplementary source lacks that fix and differs from
+  current GitHub in the energy-loss default and dependencies. Exact published
+  checkpoint/run provenance remains unresolved; see the revision audit below.
 - **Boundary conditions:** paper describes MD17 as nonperiodic, while implementation
   uses 30 Å boxes with PBC flags. Preserve/audit the actual upstream behavior.
 - **Hardware:** proposed A100 differs from the paper's V100 PCIe. A seven-day stop on
@@ -274,6 +279,10 @@ margin, not the original-MD17 pilot checkpoint or naturally collected failures.
 
 ### 2024 correction audit (2026-11-25)
 
+Historical entry: the access blocker and unknown table status below were resolved
+on November 26 using the user's revision-specific attachment URL. See the final
+revision audit; the published naphthalene value is retained.
+
 The [official README](https://github.com/kyonofx/MDsim) announces an October 29,
 2024 code and TMLR paper update. The linked
 [FAIR-Chem PR 783](https://github.com/facebookresearch/fairchem/pull/783) explains
@@ -295,6 +304,10 @@ statement from [the TMLR record](https://openreview.net/forum?id=A8pqQipwkt).
 No new training, MD or sweep was launched for this audit.
 
 ### Public artifact and training audit (2026-11-26)
+
+This entry records the search before the revision-specific attachments were supplied.
+The PDF access/table uncertainty below is superseded by the following audit; the
+missing checkpoint and exact-run provenance remain unresolved.
 
 **Decision: keep paid training and MD on hold.** The corrected naphthalene result
 is still unknown. OpenReview again returned browser verification; the authors'
@@ -353,3 +366,68 @@ Next evidence required: obtain the current TMLR PDF through normal browser acces
 then request the authors' actual evaluation weights, resolved config and run/MD
 provenance if no public checkpoint is linked. A ready-to-send, **unsent** request
 is in [fane_author_request.md](fane_author_request.md).
+
+### October 2024 revision obtained (2026-11-26)
+
+The user's EIC revision entry supplied an attachment-specific route that succeeded
+where the generic forum/PDF routes had returned verification screens:
+
+- [Revision PDF](https://openreview.net/notes/edits/attachment?id=yveYNGOUOK&name=pdf)
+  (31 pages), associated with the October 29, 2024 EIC edit. PDF creation metadata
+  is August 7, 2024; the publication header still says April 2023. Neither is a
+  reason to mistake this attachment for the older arXiv PDF.
+- [Revision supplement](https://openreview.net/notes/edits/attachment?id=yveYNGOUOK&name=supplementary_material).
+  Retrieved directly from the supplied link; no uploaded source code was executed.
+- PDF SHA256: `bc3b3771d17a69e456daea2e4a5e407beff110d24e7420409659f1807e93c595`.
+- ZIP SHA256: `2ff9af924ab89a1b7cf173d2ec8c8c42bf262b7c6dbc7a1e117784033dc795f2`.
+- Local ignored evidence: `results/reproduce/fane_gemnet_t_naphthalene/paper_revision_20241029/`
+  contains both originals, extracted PDF text, a rendered Table 3 page and ZIP
+  file inventory with per-file hashes. These files are local, not uploaded to Modal.
+
+**The reported GemNet-T/naphthalene result survives the revision.** Table 3 on
+page 8 still reports **1.5 meV/Å force MAE and 8 ± 2 ps stability**, with the
+caption identifying standard deviation over five simulations. The GemNet-dT
+entry remains 25 ± 10 ps. The column alignment was checked visually in a rendered
+page, and all 220 numeric tokens from the MD17 table body through the following
+plot labels match the corresponding older PDF sequence.
+
+This is a substantively revised paper: in Table 8 on page 23, Water-1k GemNet-T
+stability changes from **6 ± 7 ps** in the old PDF to **391 ± 132 ps** in the
+revision; GemNet-dT changes from **0 ± 0** to **388 ± 174 ps**. These examples
+establish changed water results, not a claim that water was the only affected
+system. No explicit statement found establishes whether MD17 was rerun versus
+retained. We can establish the reported table value, not the provenance of each
+simulation. The hypothesis that the correction removed the published naphthalene
+failure result is therefore unsupported and should no longer motivate the hold.
+
+The supplement has 234 ZIP entries including directories and macOS metadata;
+excluding those yields **95 source/config files**. It contains no `.pt`, `.pth`,
+`.ckpt`, trajectory, run-log or array artifacts, and no JSON scale-factor files.
+Its GemNet YAML references a scale JSON that is absent from the ZIP. Public GitHub
+does provide scale JSONs, but these are not evidence of the exact run's artifacts.
+
+There are concrete supplement-versus-current-GitHub differences:
+
+| Item | Attached supplement | Pinned current GitHub / our pilot |
+| --- | --- | --- |
+| Periodic coordinate wrapping | Absent from `atoms_to_batch` | Present |
+| GemNet energy loss | YAML omits `loss_energy`; trainer defaults to **MSE** | YAML explicitly sets **MAE** |
+| PyG requirement | `torch_geometric==2.0.4` | README pins `pyg-nightly==2.0.5.dev20220418` |
+| ASE requirement | `ase==3.23.0b1`, also README instruction for master | GitHub README uses master; pilot used 3.22.1 |
+| Epoch limit | GemNet YAML 10,000 | GemNet YAML 10,000; prepared reproduction follows paper cap 2,000 |
+
+The source snapshot attached to the edit thus cannot be assumed to be the updated
+simulation implementation. The checkpoint-selection condition discussed above
+is present in both versions. Table 7 of the revision still specifies a 2,000-epoch
+MD17 cap; batch 1 for GemNet; initial LR 0.001; force/energy coefficients 1000/1;
+and the seven-day V100 / LR-floor stopping rules. It does not supply the actual
+GemNet-T/naphthalene training epoch, model seed, selected weights, or five MD
+initial states. We have not changed the training configs to guess which source
+snapshot matches the authors' run.
+
+**Next step:** request the authors' evaluation checkpoint plus resolved training
+config, scale factors, code/environment revision and per-trajectory provenance.
+The paper still supports the project premise as a published observation; our
+one-epoch, one-trajectory diagnostic remains an unmatched test and has not
+demonstrated a margin-loss stability benefit. No new training, MD, cloud task or
+message was launched/sent. The author-request draft now reflects the verified table.
