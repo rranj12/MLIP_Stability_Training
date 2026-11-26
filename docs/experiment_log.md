@@ -44,6 +44,44 @@ the essential decisions and results are recorded here so they can travel with Gi
   is included in a follow-up documentation commit. The new reproduction pilot is
   tracked in the entry below; full training and all sweeps remain prohibited.
 
+## 2026-11-26 — Proposed supplement-based baseline budget (not authorized)
+
+- User requested next steps and cost while awaiting the authors' weights; no launch
+  is authorized. The author email remains an unsent draft on our side.
+- We can prepare a supplement-based baseline from scratch with explicit **MSE
+  energy loss**, original MD17, full GemNet-T, batch 1, force L2MAE weight 1000,
+  energy weight 1, AdamW/scheduler/EMA settings as released. Do not resume the MAE
+  pilot and describe it as training from scratch under the supplement recipe.
+- Before execution, separately prepare/verify the supplement dependency pins,
+  declare the source of missing scale JSONs, and preserve per-epoch checkpoints
+  plus validation metrics. Predeclare model selection using validation, not the
+  checkpoint with the earliest MD failure. Retain corrected coordinate handling
+  in evaluation and disclose the source differences. No existing executable
+  config or environment has been changed by this planning step.
+- Proposed first gate: **up to 20 epochs or 8 GPU hours**, then a separately
+  capped baseline check on five fixed held-out starts up to 20 ps each. Keep
+  Stage B off. This is a learning-curve/short-MD pilot, not a converged paper
+  reproduction or a test of our loss. Review validation progress before extending.
+- Modal rates rechecked November 26 at https://modal.com/pricing. A100 80 GB,
+  four requested CPU cores and 16 GiB RAM give a resource-rate estimate of
+  **$2.814912/hour**. Actual billing includes startup/shutdown and may vary with
+  resource usage; credits, storage and separate preparation are excluded.
+  Extrapolating the existing 1,381.670-second epoch: 10 epochs **3.84 h / $10.80**;
+  20 **7.68 h / $21.61**; 50 **19.19 h / $54.02**; 100 **38.38 h / $108.04**.
+  Supplement-environment throughput is not measured; refresh timing before
+  relying on these estimates. The 8-hour training cap is about **$22.52** of
+  those resources, not a complete cloud-billing cap.
+- Five 20-ps trajectories extrapolate to **1.54 h / $4.33** if all survive,
+  suggesting an approximately **$30 initial planning allowance**, including
+  modest overhead, subject to implementing separate runtime caps. Full five-by-
+  300-ps evaluation could add **23.06 h / $64.91** if all survive. Evaluation
+  speed can change with checkpoint/trajectory; these are estimates, not caps.
+- Seven A100 days would cost roughly **$473** including these CPU/RAM resources;
+  it is not equivalent to the paper's seven-day V100 budget. The paper's 2,000
+  epoch maximum would extrapolate to **768 h / $2,161** absent early stopping,
+  exceeding seven days and not representing a recommended or expected spend.
+  No measured convergence curve supports a guaranteed final training cost yet.
+
 ## 2026-11-26 — Revision PDF and supplement obtained
 
 - The user's revision-specific OpenReview links succeeded. Downloaded the
