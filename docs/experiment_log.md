@@ -16,8 +16,12 @@ the essential decisions and results are recorded here so they can travel with Gi
   post-timeout recovery. The latest **20 ps / 30-minute-capped** diagnostic preserved
   **19.155 ps per replica**, two replicas, **zero failures**. Timeout occurred before
   training or evaluation; **0/4 updates** were reached. App `ap-SSODGspmlyG82BVDbHHj6o`
-  is confirmed stopped. Active margin with the repaired optimizer remains **unverified**.
+  is confirmed stopped. Active margin on naturally collected failures remains
+  **unverified**. A subsequent synthetic bond-distortion diagnostic verified the
+  gradient direction and matched optimizer updates; its mixed-loss benefit at
+  lambda 1 was negligible. Details and limitations are recorded below.
 - Latest local suite: **60 tests passed**, including progress/partial-snapshot regressions.
+  The subsequent distortion/loss/optimizer targeted check passed **17 tests**.
 - Fixes, configs, tests and this handoff were committed and pushed as `6ffeab0` on
   `fix/margin-scale-and-bond-only-eval`. The final 20 ps diagnostic outcome below
   is included in a follow-up documentation commit. No further GPU work is running.
@@ -408,3 +412,125 @@ It neither validates nor disproves the proposed loss. Do not infer improved accu
 or dynamics merely from intact bonds, or count synthetic distortion checks as natural
 rollout failures. Establish baseline suitability before another expensive failure
 search; the existing sweep configs remain provisional and unlaunched.
+
+## 2026-11-25 — Controlled bond-distortion diagnostic (authorized)
+
+User requested a cheap, capped mechanism check before any stress rollout or sweep.
+New `scripts/check_bond_distortion.py` uses the existing matched GemNet-T/naphthalene
+Stage A checkpoint (seed 20261126). First C-H bond; first two training and first two
+validation frames; hydrogen moved along the bond to equilibrium length ±0.30 Å.
+Four fixed synthetic pairs per split; validate that anchors are below the existing
+0.216182 Å threshold and distorted structures above it. No MD failure is claimed.
+
+Predeclared checks:
+
+- Record default 10 kT loss and energy gaps first.
+- Diagnostic margin is max(10 kT, largest initial training-pair gap + 2 kT), frozen
+  before updates. This deliberately tests the active-loss regime if the production
+  margin is already satisfied; it is not a selected campaign hyperparameter.
+- Compute parameter gradients and compare ±1e-3 normalized-gradient perturbations.
+  Descent should lower the loss and raise the distorted-versus-anchor energy gap.
+  Restore the exact initial weights after these temporary probes.
+- Two arms from identical weights and matched AdamW state: lambda 0 and lambda 1,
+  four updates each, LR 1e-5, same labeled batches, gradient clipping 1.0. Record
+  full loss, margin loss, gradients, energy gaps and validation force MAE. Separate
+  validation distortions are diagnostic holdout structures, not a final test set.
+- Verify optimizer steps 119→123 in both arms and unchanged frozen parameters.
+  Report any absence of gap improvement instead of tuning the test after seeing it.
+- Never overwrite production checkpoints. Eight optimizer updates total, no MD,
+  no new pretraining, no lambda sweep. CPU tests: 17 passed (2.80 seconds).
+- Modal `bond_distortion_check` is a single A100 function with **300-second timeout,
+  zero retries** and periodic volume commits. Generic A100 allocation may be 40/80GB.
+  Execution-cost ceiling at previously checked rates: ~$0.175–$0.208 GPU only,
+  excluding startup/shutdown, CPU/RAM and credits; this is not an invoice.
+
+Exact launch (local interpreter may differ):
+
+```bash
+python -m modal run --timestamps cloud/modal/app.py::bond_distortion_check
+```
+
+Artifacts: `results/smoke/gemnet_t_naphthalene_distortion_20261125/`.
+
+### Distortion diagnostic result — mechanism passed, efficacy not established
+
+App: https://modal.com/apps/rishabh12ranjan/main/ap-53tDEev7KkuA0roqwmfChZ
+A100-SXM4-80GB; app created **21:02:46 EST**, script completed in **9.20 seconds**,
+app stopped **21:03:14 EST**, zero remaining tasks. Five-minute cap was not approached.
+Rough GPU component is on the order of one to two cents at the previously checked
+rate, excluding CPU/RAM and overhead; no billing receipt was consulted.
+
+- Fixed C0–H10 target lengths: **1.400652 Å / 0.800652 Å** (equilibrium ±0.30 Å),
+  four train pairs and four validation pairs. Only H moved; anchors and other atoms
+  were preserved. These are synthetic violations of our collection threshold,
+  not naturally occurring failures or the paper's 0.5 Å instability events.
+- Baseline mean training-pair energy gap: **1.271212 eV**. Normal 10 kT margin:
+  **0.430867 eV**. Normal margin loss: **2.34e-8 eV**, already essentially saturated.
+  A geometric threshold violation does not necessarily have too little energy
+  relative to its anchor; this loss penalizes the latter.
+- Explicit diagnostic margin: **1.611350 eV**, determined from initial training
+  gaps by the predeclared rule. This is a mechanism-test setting, not a production
+  recommendation or result from a lambda sweep.
+- Finite nonzero parameter-gradient norm: **4.08343**. A temporary normalized
+  descent perturbation reduced diagnostic loss **0.342583 → 0.338516 eV** and
+  increased mean gap **1.271212 → 1.275649 eV**. Opposite-direction perturbation
+  increased loss to **0.346682 eV**. Weights were reset before both training arms.
+- Lambda-zero and lambda-one arms each restored **121 AdamW states at step 119**,
+  performed four updates and ended at **123**. Frozen parameters stayed unchanged.
+  All losses/gradient norms were finite; no campaign checkpoint was overwritten.
+- Combined training did **not** raise the mean gap above baseline: control final
+  **1.267482 eV**, margin final **1.267484 eV**. Margin-minus-control difference:
+  **2.03e-6 eV** (train) and **8.34e-7 eV** (validation). These tiny differences are
+  near numerical variability and are not meaningful improvement evidence.
+- Validation force MAE: baseline **0.370468 eV/Å**, control **0.376813203 eV/Å**,
+  margin **0.376813230 eV/Å**. The two arms are effectively identical at this scale;
+  both worsened slightly after these few supervised updates. Labeled losses were
+  ~714–853 while the weighted diagnostic margin term was ~0.34, consistent with
+  a weak margin contribution at lambda 1. Loss values alone are not gradient ratios.
+- Independently downloaded report and pairs; CPU recomputation verified geometry,
+  softplus loss values, update counts and reported optimizer continuation.
+- Corrected the derivative sign in the margin-loss **docstring**: gradient is
+  sigmoid × (dU_anchor − dU_distorted). The implemented loss was already correct.
+- No MD, new pretraining, production checkpoint replacement, or sweep ran.
+
+Interpretation: the margin gradient has the intended direction on real GemNet-T
+parameters and the restored optimizer executes with active synthetic pairs. This
+is a functional diagnostic, not proof of improved dynamics or adequate weighting
+against the supervised objective. Natural-failure Stage B still needs validation.
+
+### Concrete paper-reproduction route and unresolved details
+
+Primary sources checked on November 25:
+
+- [Authors' repository](https://github.com/kyonofx/MDsim), including recursive file
+  inventory and issue listings. The distributed example checkpoint is SchNet/water;
+  no GemNet-T/naphthalene checkpoint was found in those published listings.
+- [Zenodo dataset](https://zenodo.org/records/7196767) describes preprocessed data;
+  its three listed files are `mdsim_data.tar.gz` (7.28 GB), `alanine_dipeptide.npy`,
+  and `water.npy`. We inspected metadata only, not the large archive's contents.
+- [Original preprocessing](https://github.com/kyonofx/MDsim/blob/main/preprocessing/md17.py):
+  MD17, 9,500 training / 500 validation / 10,000 test; split random state 123.
+- [Naphthalene simulation config](https://github.com/kyonofx/MDsim/blob/main/configs/simulate/naphthalene.yml):
+  test starts, default seed 123, 500 K, NoseHoover, timestep 0.5 fs, `ttime: 20`,
+  600,000 steps, save every 100 steps. A five-trajectory benchmark needs separate
+  starts/seeds; the config's single default seed is not the full five-run specification.
+- [GemNet-T config](https://github.com/kyonofx/MDsim/blob/main/configs/md17/gemnet-T.yml):
+  batch 1, initial LR .001, AdamW, force coefficient 1000, energy coefficient 1,
+  EMA .999. Source currently says `max_epochs: 10000`; the downloaded paper's
+  Table 7 says 2,000 for MD17. Resolve/version this discrepancy before claiming
+  exact replication. Current backend prefers matched raw weights; paper-style
+  evaluation may instead use the upstream EMA export. Preserve the distinction.
+
+A sensible reproduction uses the authors' released data/split, model and training
+protocol (or their exact checkpoint if obtained), verifies force MAE, then runs
+five independent test trajectories with the published thermostat and failure
+criterion. Aim to reproduce a distribution of outcomes, not guarantee failure at
+exactly 8 ps. The paper's 2024 correction remains an additional version-check item
+as documented above. No reproduction training or large download was started.
+
+We cannot yet identify which checkpoint/data/integrator difference caused the
+absence of failures in our smoke. Architecture alone does not determine the
+learned energy surface or failure time. The smoke checkpoint's validation force
+MAE is ~370 meV/Å; the downloaded paper reports 1.5 meV/Å for its GemNet-T naphthalene
+model on a different MD17 test set. These are not matched evaluations, but they
+underscore that we have not recreated the paper's trained baseline.

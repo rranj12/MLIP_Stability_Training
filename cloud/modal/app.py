@@ -157,6 +157,18 @@ def main(molecule: str = "ethanol", model: str = "schnet", steps: str = "prepare
                dataset, pretrain_args, eval_overrides, seed)
 
 
+# ---------------------------------------------------------------- bounded diagnostic
+@app.function(gpu="A100", volumes={"/vol": volume}, timeout=300, retries=0)
+def bond_distortion_check():
+    """Synthetic-pair check only: eight total updates, no MD or sweep."""
+    try:
+        sh("nvidia-smi")
+        sh("python", "scripts/check_bond_distortion.py", "--out",
+           "results/smoke/gemnet_t_naphthalene_distortion_20261125", commit_every_s=30)
+    finally:
+        volume.commit()
+
+
 # ---------------------------------------------------------------- lambda sweep
 @app.function(gpu=os.environ.get("MLIP_GPU", "A10G"), volumes={"/vol": volume}, timeout=24 * 3600)
 def sweep_job(args: list):
