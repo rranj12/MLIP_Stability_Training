@@ -39,6 +39,24 @@ the essential decisions and results are recorded here so they can travel with Gi
   is included in a follow-up documentation commit. The new reproduction pilot is
   tracked in the entry below; full training and all sweeps remain prohibited.
 
+## 2026-11-25 — Correction audit and gradient-check explanation
+
+- Confirmed the official 2024 correction wraps periodic coordinates before
+  neighbor-graph construction. Our upstream pin contains it. Access to the
+  corrected OpenReview paper remains blocked, so whether the old GemNet-T
+  naphthalene **8 +/- 2 ps** table entry changed is **not yet verified**.
+- Recomputed a central finite difference from the saved synthetic GemNet
+  diagnostic: **4.0830672**, versus autograd's **4.0834300**, a **0.0088863%**
+  relative discrepancy. The negative-gradient perturbation lowered margin loss
+  and increased the mean distorted-minus-anchor energy gap. This verifies local
+  behavior at one point/direction/step size, not MD stability improvement.
+- The synthetic diagnostic used the earlier rMD17 checkpoint and an enlarged
+  active margin. Four matched mixed-loss updates at lambda 1 showed negligible
+  benefit; natural failure-pair training remains unverified.
+- Details, source links and limitations are in
+  [the reproduction notes](fane_reproduction.md#numerical-evidence-from-the-saved-diagnostic).
+  No experiment was launched. Daniel's message is draft-only; nothing was sent.
+
 ## 2026-11-25 — Capped MD on the original-MD17 pilot checkpoint
 
 - User authorized a capped MD diagnostic before spending more on training. This

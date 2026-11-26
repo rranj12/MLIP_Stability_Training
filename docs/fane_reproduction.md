@@ -237,3 +237,56 @@ production defaults. The matched four-update mixed-loss comparison at lambda 1
 showed negligible difference from its control. That is a functional verification,
 not demonstrated improvement in MD stability. The paper-baseline training config
 above contains only the standard energy/force objective; it has no margin loss.
+
+### Numerical evidence from the saved diagnostic
+
+For one pair, writing `gap = U(distorted) - U(anchor)` and `s = kT`,
+`dL/dgap = -sigmoid((m-gap)/s)` (with an additional `1/N` for a batch mean).
+The sign encourages a larger gap. Shared model parameters and the supervised
+objective mean this does not guarantee that every pair's gap grows during training.
+
+The saved real-GemNet report is
+`results/smoke/gemnet_t_naphthalene_distortion_20261125/report.json`.
+The diagnostic restored the same weights before perturbing them in each direction,
+using `v = gradient / ||gradient||` and parameter step norm `h = 0.001`:
+
+| Measurement | Value |
+| --- | ---: |
+| Original margin loss | 0.3425830305 eV |
+| Loss at `theta - h*v` | 0.3385159969 eV |
+| Loss at `theta + h*v` | 0.3466821313 eV |
+| Autograd directional derivative `gradient dot v` | 4.0834300429 |
+| Central finite difference `(L(theta+h*v)-L(theta-h*v))/(2*h)` | 4.0830671787 |
+| Relative discrepancy | 0.0088863% |
+
+The finite-difference comparison was calculated from existing saved values; no
+model execution or new experiment was needed. Descent also increased the mean
+distorted-minus-anchor energy gap from 1.271212 to 1.275649 eV; ascent reduced it
+to 1.266790 eV. This is evidence for a correct local parameter-gradient direction
+and magnitude at one point, one direction and one step size. A stronger future
+numerical audit would test several step sizes and independent directions. It is
+not a proof of all gradient components, restoring forces, or longer MD survival.
+This check used the earlier rMD17 checkpoint and deliberately active diagnostic
+margin, not the original-MD17 pilot checkpoint or naturally collected failures.
+
+### 2024 correction audit (2026-11-25)
+
+The [official README](https://github.com/kyonofx/MDsim) announces an October 29,
+2024 code and TMLR paper update. The linked
+[FAIR-Chem PR 783](https://github.com/facebookresearch/fairchem/pull/783) explains
+that periodic graph construction could miss neighbors when unwrapped coordinates
+became too far apart for its finite set of periodic image cells. The correction
+wraps coordinates before graph construction. MDsim commit
+[`7678721`](https://github.com/kyonofx/MDsim/commit/7678721f22b2be44aeaa65016c4d0f3053afeec0)
+adds this operation in `atoms_to_batch`; our pinned code includes it.
+
+**The effect on the published GemNet-T/naphthalene number remains unverified.**
+The current OpenReview forum/PDF, public APIs and a search-indexed TMLR PDF asset
+were blocked by browser verification/HTTP 403. The downloaded arXiv v2 is from
+2023, so its 8 +/- 2 ps result cannot establish what the 2024 revision reports.
+The bug description alone does not show that it caused that particular result.
+Do not attribute our 20 ps survival to the fix without further evidence, and do
+not treat 8 +/- 2 ps as a verified target for the corrected implementation.
+Next required evidence is the corrected manuscript's MD17 table and correction
+statement from [the TMLR record](https://openreview.net/forum?id=A8pqQipwkt).
+No new training, MD or sweep was launched for this audit.
