@@ -1,0 +1,35 @@
+# Independent lambda selection for each molecule. See docs/lambda_sweeps.md.
+includes:
+  - lambda.yml
+
+name: gemnet_t_fixed_seeded
+
+defaults:
+  train:
+    overrides:
+      simulate: {n_replicas: 32}
+      stage_b: {batch_labeled: 8, batch_pairs: 8}
+      optim: {name: AdamW}
+  select_eval:
+    overrides:
+      simulate: {n_replicas: 64}
+  final_eval:
+    overrides:
+      simulate: {n_replicas: 64}
+
+systems:
+  - {molecule: naphthalene, model: gemnet_t}
+  - {molecule: aspirin, model: gemnet_t}
+
+# Provisional logarithmic bracket, not calibrated lambda values. GemNet-T's force
+# loss is 1000 * l2mae; the old SchNet grid is not a comparable regularization scale.
+grid:
+  lam: [0, 1.0e-3, 1.0e-2, 1.0e-1, 1, 10, 100]
+  seeds: [0, 1]
+
+select:
+  mode: per_system
+  criterion: bond_only             # combined failures are still saved by evaluation
+
+final:
+  seeds: [0, 1, 2]

@@ -2,12 +2,15 @@
 
 A system is one (molecule, model) pair with its own Stage A checkpoint. Datasets, systems, the
 grid and the selection rule are all set in the sweep config (configs/sweep/lambda.yml).
+Use pretrained_dir with {seed} to pair each seed's independent Stage A checkpoint across
+the control, margin candidates and baseline. The supplied configs use fixed Stage B budgets.
 
 Protocol
   1. Stage B for every (system, lambda, seed); lambda = 0 is the fine-tuning control.
   2. Evaluate each run from `tune` frames (outside train/val/test); force MAE on tune frames.
   3. Select, per system or one shared lambda:
-       budget:    force MAE <= (1 + acc_tol) * that of lambda = 0 (on every system if shared)
+       budget:    force MAE <= (1 + acc_tol) * that of lambda = 0 (on every system if shared),
+                  with no accuracy-guardrail aborts; an aborted control blocks selection
        best:      in-budget lambda with the lowest failure fraction (mean over systems if shared)
        selected:  smallest in-budget lambda within one standard error of the best
      SE = max(binomial over replicas, between-seed), so training noise counts.
@@ -34,7 +37,7 @@ import yaml
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
-from mlipstab.config import _merge  # noqa: E402
+from mlipstab.config import _merge, load_config  # noqa: E402
 
 CRITERIA = {"combined": "observed", "bond_only": "observed_bond_only"}  # keys in stability.npz
 EVAL_DIR = "results/eval"  # where scripts/evaluate.py writes <tag>/
@@ -44,7 +47,7 @@ EVAL_DIR = "results/eval"  # where scripts/evaluate.py writes <tag>/
 def load_sweep(path):
     """Read a sweep config; resolve each system as datasets[<dataset>] <- defaults <- system entry."""
     path = Path(path).resolve()
-    cfg = yaml.safe_load(path.read_text())
+    cfg = load_config(path)
     defaults = cfg.get("defaults") or {}
     systems = {}
     for entry in cfg["systems"]:
@@ -87,11 +90,13 @@ def eval_tag(cfg, s, stage, lam, seed):
     return f"{out_dir(cfg).relative_to(ROOT / 'results')}/{s['id']}/{stage}/{lam_tag(lam)}_seed{seed}"
 
 
-def system_overrides(s):
+def system_overrides(s, seed):
     """Merged into every generated config for this system: its data location and Stage A model."""
     out = {"data": s["data"]}
     if s.get("pretrained_dir"):
-        out["pretrained"] = {"dir": s["pretrained_dir"]}
+        out["pretrained"] = {"dir": s["pretrained_dir"].format(seed=seed)}
+        if "{seed}" in s["pretrained_dir"]:
+            out["pretrained"]["seed"] = seed
     return out
 
 
@@ -166,7 +171,7 @@ def run_one(cfg, s, stage, lam, seed):
         ckpt = ckpt_path(cfg, s, lam, seed)
         if not ckpt.exists():
             body = _merge(s["train"].get("overrides") or {}, {
-                **system_overrides(s), "stage_b": {"lam": float(lam)}, "seed": seed,
+                **system_overrides(s, seed), "stage_b": {"lam": float(lam)}, "seed": seed,
                 "molecule": s["molecule"], "model": s["model"],
                 "results_dir": str(ckpt.parent.parent.relative_to(ROOT))})
             tcfg = write_yaml(cfg_dir / f"train_{lam_tag(lam)}_seed{seed}.yml", s["train"]["config"], body)
@@ -177,7 +182,7 @@ def run_one(cfg, s, stage, lam, seed):
         print(f"{tag} already evaluated")
         return
     section = s["select_eval"] if stage == "tune" else s["final_eval"]
-    body = _merge(section.get("overrides") or {}, system_overrides(s))
+    body = _merge(section.get("overrides") or {}, system_overrides(s, seed))
     ecfg = write_yaml(cfg_dir / f"eval_{stage}_{lam_tag(lam)}_seed{seed}.yml", section["config"], body)
     cmd = [sys.executable, "scripts/evaluate.py", "--config", ecfg, "--molecule", s["molecule"],
            "--model", s["model"], "--tag", tag, "--seed", seed]
@@ -217,8 +222,11 @@ def aggregate(runs):
 
 
 def in_budget(stats, acc_tol):
+    if stats[0.0].get("guardrail_tripped"):
+        raise ValueError("lambda=0 control hit the accuracy guardrail; revise the fine-tuning settings before selection")
     ref = stats[0.0]["force_mae"]
-    return {l for l, s in stats.items() if s["force_mae"] <= (1 + acc_tol) * ref}
+    return {l for l, s in stats.items() if not s.get("guardrail_tripped")
+            and s["force_mae"] <= (1 + acc_tol) * ref}
 
 
 def one_se(score, se, feasible):
@@ -272,7 +280,7 @@ def table(stats, feasible, best, selected):
              "|---|---|---|---|---|---|---|"]
     c = stats[0.0]
     for l, s in stats.items():
-        note = [t for t, on in (("over accuracy budget", l not in feasible), ("lowest failures", l == best),
+        note = [t for t, on in (("ineligible", l not in feasible), ("lowest failures", l == best),
                                 ("**selected**", l == selected), ("guardrail tripped", s["guardrail_tripped"])) if on]
         p = z_test(s["failed"], s["n"], c["failed"], c["n"])
         lines.append(f"| {l:g} | {s['failed']} / {s['n']} | {s['frac']:.3f} ± {s['se']:.3f} | {s['failed_bond_only']} | "

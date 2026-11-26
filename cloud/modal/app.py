@@ -18,6 +18,7 @@ Lambda sweep (scripts/sweep_lambda.py), one GPU container per (lambda, seed):
     modal run --detach cloud/modal/app.py::sweep --config ... --phase final   # once, after reading selection.md
 
 GPU: MLIP_GPU=A100 modal run ...   (default A10G)
+Bounded runs: MLIP_RUN_TIMEOUT_S=600 caps one run invocation at 10 minutes (no retries).
 Workspace: modal profile activate <workspace>, or MODAL_PROFILE=<workspace> modal run ...
 Fetch results: modal volume get mlipstab results/eval/<tag> .
 """
@@ -25,6 +26,7 @@ Fetch results: modal volume get mlipstab results/eval/<tag> .
 import os
 import subprocess
 from pathlib import Path
+from typing import Optional
 
 import modal
 
@@ -55,17 +57,43 @@ app = modal.App("mlipstab", image=image)
 volume = modal.Volume.from_name("mlipstab", create_if_missing=True)
 
 
-def sh(*cmd):
+def sh(*cmd, commit_every_s=None):
     print("+", " ".join(map(str, cmd)), flush=True)
-    subprocess.run([str(c) for c in cmd], check=True, cwd=ROOT)
+    cmd = [str(c) for c in cmd]
+    if commit_every_s is None:
+        subprocess.run(cmd, check=True, cwd=ROOT)
+        return
+    # Commit partial snapshots while the training subprocess is still running.
+    with subprocess.Popen(cmd, cwd=ROOT) as process:
+        try:
+            while True:
+                try:
+                    returncode = process.wait(timeout=commit_every_s)
+                    break
+                except subprocess.TimeoutExpired:
+                    volume.commit()
+            if returncode:
+                raise subprocess.CalledProcessError(returncode, cmd)
+        finally:
+            if process.poll() is None:
+                process.kill()
+                process.wait()
+            volume.commit()
 
 
-@app.function(gpu=os.environ.get("MLIP_GPU", "A10G"), volumes={"/vol": volume}, timeout=24 * 3600)
+@app.function(gpu=os.environ.get("MLIP_GPU", "A10G"), volumes={"/vol": volume},
+              timeout=int(os.environ.get("MLIP_RUN_TIMEOUT_S", 24 * 3600)), retries=0)
 def run(molecule: str, model: str, steps: str, eval_ps: float, checkpoint: str, tag: str,
         margin_overrides: str = "", stage_a: str = "", dataset: str = "md17",
-        pretrain_args: str = "", eval_overrides: str = ""):
+        pretrain_args: str = "", eval_overrides: str = "", seed: Optional[int] = None):
     import yaml
+    if seed is not None and stage_a:
+        raise ValueError("use --seed for independent Stage A runs or --stage-a for a legacy run, not both")
     os.environ["DATASET"] = dataset  # read by scripts/pretrain.sh
+    if seed is not None:
+        os.environ["TRAIN_SEED"] = str(seed)
+    else:
+        os.environ.pop("TRAIN_SEED", None)
     name = f"{dataset}-{molecule}_1k_{model}"  # StABlE's name for a Stage A run
     margin_cfg, eval_cfg = {"md17": ("base.yml", "rmd17_500K.yml"), "md22": ("md22.yml", "md22_500K.yml")}[dataset]
     os.makedirs("/vol/data", exist_ok=True)
@@ -82,20 +110,14 @@ def run(molecule: str, model: str, steps: str, eval_ps: float, checkpoint: str, 
 
     if "pretrain" in steps:
         sh("bash", "scripts/pretrain.sh", model, molecule, "1k", *pretrain_args.split())
-        if model != "nequip":  # pretrain.sh leaves this link to the caller
-            run_dir = Path(f"/vol/results/pretrain/{model}_{molecule}_1k")
-            ckpt = max(run_dir.glob("*/checkpoints/best_checkpoint.pt"), key=os.path.getmtime)
-            dest = Path(f"/vol/results/checkpoints/qm_pretrained/{model}/{name}")
-            dest.mkdir(parents=True, exist_ok=True)
-            link = dest / "checkpoints"
-            if link.is_symlink():
-                link.unlink()
-            link.symlink_to(ckpt.parent)
         volume.commit()
 
     # stage_a: name of a run under results/pretrain/<model>_<molecule>_1k/ to start from instead
     # of the latest one (e.g. the patience-5 run after a patience-50 run replaced the default link)
     pre = {}
+    if seed is not None:
+        pre = {"seed": seed, "pretrained": {"dir": f"results/checkpoints/qm_pretrained/seed{seed}",
+                                           "seed": seed}}
     dump = lambda d: yaml.safe_dump(d) if d else ""  # safe_dump({}) is "{}", not valid after other keys
     if stage_a:
         dest = Path(f"/vol/results/checkpoints/qm_{stage_a}/{model}/{name}")
@@ -108,7 +130,8 @@ def run(molecule: str, model: str, steps: str, eval_ps: float, checkpoint: str, 
         cfg = "/tmp/margin.yml"  # margin_overrides: YAML merged over base.yml, e.g. "{optim: {lr: 1.0e-5}}"
         Path(cfg).write_text(f"includes: [{ROOT}/configs/margin/{margin_cfg}]\n"
                              + dump({**(yaml.safe_load(margin_overrides or "{}") or {}), **pre}))
-        sh("python", "scripts/train_stability.py", "--config", cfg, "--molecule", molecule, "--model", model)
+        sh("python", "scripts/train_stability.py", "--config", cfg, "--molecule", molecule, "--model", model,
+           commit_every_s=30)
         volume.commit()
 
     if "eval" in steps:
@@ -117,7 +140,9 @@ def run(molecule: str, model: str, steps: str, eval_ps: float, checkpoint: str, 
         over.setdefault("simulate", {})["length_ps"] = eval_ps
         Path(cfg).write_text(f"includes: [{ROOT}/configs/eval/{eval_cfg}]\n" + dump({**over, **pre}))
         cmd = ["python", "scripts/evaluate.py", "--config", cfg, "--molecule", molecule, "--model", model,
-               "--tag", tag or f"pretrained_{model}_{molecule}_{eval_ps:g}ps"]
+               "--tag", tag or (f"pretrained_{model}_{molecule}_{eval_ps:g}ps"
+                                + (f"_seed{seed}" if seed is not None else "")),
+               "--seed", str(seed if seed is not None else 0)]
         if checkpoint:
             cmd += ["--checkpoint", checkpoint]
         sh(*cmd)
@@ -127,9 +152,9 @@ def run(molecule: str, model: str, steps: str, eval_ps: float, checkpoint: str, 
 @app.local_entrypoint()
 def main(molecule: str = "ethanol", model: str = "schnet", steps: str = "prepare,pretrain,eval",
          eval_ps: float = 100.0, checkpoint: str = "", tag: str = "", margin_overrides: str = "", stage_a: str = "",
-         dataset: str = "md17", pretrain_args: str = "", eval_overrides: str = ""):
+         dataset: str = "md17", pretrain_args: str = "", eval_overrides: str = "", seed: Optional[int] = None):
     run.remote(molecule, model, steps, eval_ps, checkpoint, tag, margin_overrides, stage_a,
-               dataset, pretrain_args, eval_overrides)
+               dataset, pretrain_args, eval_overrides, seed)
 
 
 # ---------------------------------------------------------------- lambda sweep

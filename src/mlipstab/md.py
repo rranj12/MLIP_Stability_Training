@@ -15,13 +15,16 @@ import torch
 
 @torch.no_grad()
 def rollout(force_fn, step_fn, x0, v0, n_steps, save_every, failed_fn,
-            stop_frac=None, store_device=None):
+            stop_frac=None, store_device=None, progress_fn=None):
     """Returns (traj (T, R, N, 3) with frame 0 = x0, failed_ever (R,) bool)."""
     store_device = store_device or x0.device
     x, v = x0.clone(), v0.clone()
-    f = force_fn(x)
     failed = torch.zeros(x.shape[0], dtype=torch.bool, device=x.device)
     frames = [x0.detach().to(store_device)]
+    if progress_fn is not None:
+        progress_fn(0, frames, failed)
+    f = force_fn(x)
+    step = 0
     for step in range(1, n_steps + 1):
         x, v, f = step_fn(x, v, f)
         if step % save_every:
@@ -33,6 +36,10 @@ def rollout(force_fn, step_fn, x0, v0, n_steps, save_every, failed_fn,
             sel = bad[:, None, None]
             x, v = torch.where(sel, x0, x), torch.where(sel, v0, v)
             f = force_fn(x)
+        if progress_fn is not None:
+            progress_fn(step, frames, failed)
         if stop_frac is not None and failed.float().mean().item() >= stop_frac:
             break
+    if progress_fn is not None:
+        progress_fn(step, frames, failed, finished=True)
     return torch.stack(frames), failed

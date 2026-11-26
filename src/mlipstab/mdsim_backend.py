@@ -12,7 +12,6 @@ train() plus a manual rescale wherever a loss needs parameter gradients.
 """
 
 import os
-import warnings
 from pathlib import Path
 
 import numpy as np
@@ -88,6 +87,12 @@ class MDSimBackend:
                     model_type, path=path, device=self.device)
             finally:
                 os.chdir(cwd)
+            # Baseline evaluation and every Stage B arm use the same raw weights
+            # paired with the optimizer. Keep legacy EMA exports usable for evaluation.
+            self.stage_a_checkpoint = self.stage_a_dir / "checkpoints" / "best_training_checkpoint.pt"
+            if self.stage_a_checkpoint.exists():
+                self.model.load_state_dict(_load_state(self.stage_a_checkpoint, self.device))
+                print(f"Loaded matched Stage A training weights: {self.stage_a_checkpoint}")
             r_max_key = "cutoff"
             # MDsim models are trained on E - mean(E_train) and the calculator returns that raw
             # output, so labeled energies must be shifted the same way before comparing.
@@ -95,8 +100,15 @@ class MDSimBackend:
             self.e_shift = float((ds[0] if isinstance(ds, list) else ds).get("target_mean", 0.0))
         if checkpoint is not None:
             self.model.load_state_dict(_load_state(checkpoint, self.device))
-        for p in self.model.parameters():
-            p.requires_grad = True
+        expected_seed = cfg["pretrained"].get("seed")
+        actual_seed = self.model_config["model"].get("seed") if self.is_nequip else self.model_config.get("seed")
+        if expected_seed is not None and actual_seed != expected_seed:
+            raise ValueError(f"Stage A seed {actual_seed} does not match requested seed {expected_seed}: "
+                             f"{self.stage_a_dir}")
+        if self.is_nequip:
+            for p in self.model.parameters():
+                p.requires_grad = True
+        # MDsim constructors preserve frozen parameters (e.g. GemNet scale factors).
 
         # ---- StABlE's batched calculator (mirrors Simulator.__init__)
         cell = d.get("cell", CELL)
@@ -223,25 +235,39 @@ class MDSimBackend:
 
     def make_optimizer(self, cfg):
         o = cfg["optim"]
-        opt = getattr(torch.optim, o["name"])(self.model.parameters(), lr=o["lr"])
+        optimizer_class = getattr(torch.optim, o["name"])
+        self.optimizer_source = None
         if o.get("reuse_stage_a_state"):
-            try:
-                if self.is_nequip:
-                    state = torch.load(self.stage_a_dir / "trainer.pth", map_location=self.device)["state_dict"]["optim"]
-                else:
-                    state = torch.load(self.stage_a_dir / "checkpoints" / "best_checkpoint.pt",
-                                       map_location=self.device)["optimizer"]
-                opt.load_state_dict(state)
-            except Exception as err:  # different optimizer class, missing key, ...
-                warnings.warn(f"could not reuse Stage A optimizer state ({err!r}); starting fresh")
-                opt = getattr(torch.optim, o["name"])(self.model.parameters(), lr=o["lr"])
+            if self.is_nequip:
+                raise ValueError("NequIP trainer.pth is not paired with best_model.pth; "
+                                 "use reuse_stage_a_state: false for an explicit fresh optimizer")
+            if not self.stage_a_checkpoint.exists():
+                raise FileNotFoundError(f"Missing matched Stage A optimizer checkpoint: {self.stage_a_checkpoint}. "
+                                        "Rerun scripts/pretrain.sh, or explicitly set reuse_stage_a_state: false")
+            saved = torch.load(self.stage_a_checkpoint, map_location=self.device)
+            if saved["optimizer_class"] != o["name"]:
+                raise ValueError(f"Stage A optimizer {saved['optimizer_class']} does not match {o['name']}")
+            current = self.model.state_dict()
+            if current.keys() != saved["state_dict"].keys() or any(
+                    not torch.equal(current[n], p) for n, p in saved["state_dict"].items()):
+                raise ValueError("Model weights do not match the Stage A optimizer checkpoint")
+            params = dict(self.model.named_parameters())
+            # Restore the exact parameter order and decay/no-decay groups, not just moments.
+            groups = [{**g, "params": [params[n] for n in names]} for g, names in
+                      zip(saved["optimizer"]["param_groups"], saved["optimizer_param_names"], strict=True)]
+            opt = optimizer_class(groups, lr=o["lr"])
+            opt.load_state_dict(saved["optimizer"])
             for g in opt.param_groups:
                 g["lr"] = o["lr"]
+            self.optimizer_source = str(self.stage_a_checkpoint)
+            print(f"Restored {o['name']} from {self.optimizer_source} (Stage A step {saved['step']})")
+        else:
+            opt = optimizer_class(self.model.parameters(), lr=o["lr"])
         return opt
 
     # ------------------------------------------------------------------ MD
     def langevin(self, x0, n_steps, save_every, failed_fn, sim, stop_frac=None,
-                 store_device=None, temperature=None, friction=None):
+                 store_device=None, temperature=None, friction=None, progress_fn=None):
         """Langevin rollout with StABlE's integrator. Returns (traj (T, R, N, 3), failed (R,))."""
         from ase import units
         from mdsim.common.utils import initialize_velocities
@@ -260,18 +286,29 @@ class MDSimBackend:
             return x, v, f
 
         return rollout(self.forces, step_fn, x0, v0, n_steps, save_every, failed_fn,
-                       stop_frac=stop_frac, store_device=store_device)
+                       stop_frac=stop_frac, store_device=store_device, progress_fn=progress_fn)
 
-    def make_simulate_fn(self, cfg):
+    def make_simulate_fn(self, cfg, progress_dir=None):
         """simulate_fn(model) -> (x_fail, x_anchor, fail_frac) for mlipstab.train.stage_b."""
         sim, det = cfg["simulate"], cfg["detect"]
         every = sim["check_every_steps"]
         n_steps = int(round(sim["max_ps"] * 1000 / sim["timestep_fs"]))
         failed_fn = lambda x: unstable(x, self.bonds, self.b0, det["bond_threshold"])
+        cycle = 0
 
         def simulate_fn(model):
+            nonlocal cycle
+            recorder = None
+            if progress_dir is not None and sim.get("progress_every_s", 0) > 0:
+                from mlipstab.rollout_log import RolloutRecorder
+
+                recorder = RolloutRecorder(Path(progress_dir) / f"cycle{cycle:03d}",
+                                           sim["timestep_fs"], n_steps, every,
+                                           interval_s=sim["progress_every_s"])
+            cycle += 1
             traj, failed = self.langevin(self.sample_train(sim["n_replicas"]), n_steps, every,
-                                         failed_fn, sim, stop_frac=sim["end_phase_fail_frac"])
+                                         failed_fn, sim, stop_frac=sim["end_phase_fail_frac"],
+                                         progress_fn=recorder)
             _, _, x_fail, x_anchor = extract_failure_pairs(
                 traj, self.bonds, self.b0, det["bond_threshold"], det["anchor_lag_steps"] // every)
             return x_fail, x_anchor, failed.float().mean().item()

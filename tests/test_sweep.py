@@ -48,6 +48,50 @@ def test_selects_control_when_nothing_beats_it():
     assert sw.select_lambda(stats, 0.05)[0] == 0.0
 
 
+def test_guardrail_aborts_cannot_win_selection():
+    stats = {0.0: stat(0.2, 1.0), 1.0: {**stat(0.0, 1.0), "guardrail_tripped": True}}
+    assert sw.select_lambda(stats, 0.05)[0] == 0.0
+    stats[0.0]["guardrail_tripped"] = True
+    with pytest.raises(ValueError, match="control hit the accuracy guardrail"):
+        sw.select_lambda(stats, 0.05)
+
+
+def test_gemnet_campaign_has_separate_selections_and_fixed_budgets():
+    cfg = sw.load_sweep(ROOT / "configs/sweep/gemnet_t.yml")
+    assert set(cfg["systems"]) == {"naphthalene_gemnet_t", "aspirin_gemnet_t"}
+    assert cfg["select"]["mode"] == "per_system"
+    assert cfg["select"]["criterion"] == "bond_only"
+    assert len(sw.jobs(cfg, "tune")) == 28
+    for s in cfg["systems"].values():
+        train = sw._merge(sw.load_config(s["train"]["config"]), s["train"]["overrides"])
+        assert train["stage_b"]["fixed_budget"]
+        assert train["stage_b"]["n_cycles"] * train["stage_b"]["steps_per_cycle"] == 1500
+        assert train["optim"]["name"] == "AdamW"
+
+
+def test_each_seed_uses_one_stage_a_for_control_margin_and_baseline(tmp_path, monkeypatch):
+    cfg = sw.load_sweep(ROOT / "configs/sweep/gemnet_t.yml")
+    monkeypatch.setattr(sw, "ROOT", tmp_path)
+    commands = []
+    monkeypatch.setattr(sw, "sh", lambda *args: commands.append(args))
+    s = cfg["systems"]["aspirin_gemnet_t"]
+    for seed in (0, 1, 2):
+        expected = {"dir": f"results/checkpoints/qm_pretrained/seed{seed}", "seed": seed}
+        for stage in ("tune", "final"):
+            for lam in (None, 0.0, 1.0):
+                commands.clear()
+                sw.run_one(cfg, s, stage, lam, seed)
+                assert len(commands) == (1 if lam is None else 2)
+                for cmd in commands:
+                    body = yaml.safe_load(Path(cmd[cmd.index("--config") + 1]).read_text())
+                    assert body["pretrained"] == expected
+                    if cmd[1] == "scripts/train_stability.py":
+                        assert body["seed"] == seed
+                        assert body["stage_b"]["fixed_budget"]
+                    else:
+                        assert cmd[cmd.index("--seed") + 1] == seed
+
+
 def test_shared_lambda_must_fit_every_system_budget():
     a = {0.0: stat(0.30, 1.0), 1e-3: stat(0.20, 1.0), 1e-2: stat(0.02, 1.02)}
     b = {0.0: stat(0.05, 2.0), 1e-3: stat(0.04, 2.0), 1e-2: stat(0.01, 2.5)}  # 1e-2 breaks b's accuracy

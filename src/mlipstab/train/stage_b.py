@@ -31,6 +31,7 @@ from mlipstab.units import kT
 class StageBConfig:
     n_cycles: int = 6
     steps_per_cycle: int = 500
+    fixed_budget: bool = False  # keep all supervised updates; only the accuracy guardrail can abort
     batch_labeled: int = 8
     batch_pairs: int = 16
     lam: float = 0.1
@@ -64,37 +65,40 @@ def run_stage_b(model, optimizer, cfg, simulate_fn, energy_fn, ef_loss_fn,
             if anchor_fn is not None:
                 x_anchor = anchor_fn(x_fail, x_anchor)
             buffer.push(x_fail, x_anchor, cycle=cycle)
-        record = {"cycle": cycle, "fail_frac": fail_frac, "buffer": len(buffer)}
+        record = {"cycle": cycle, "fail_frac": fail_frac, "buffer": len(buffer), "steps": 0}
         history.append(record)
         log(record)
-        if fail_frac < cfg.stop_fail_frac:
+        if not cfg.fixed_budget and fail_frac < cfg.stop_fail_frac:
             log("failure fraction below target; stopping")
             break
-        if len(buffer) == 0:
+        if not cfg.fixed_budget and len(buffer) == 0:
             continue
 
         last_good = copy.deepcopy(model.state_dict())
         for step in range(cfg.steps_per_cycle):
-            xf, xa, _ = buffer.sample(cfg.batch_pairs, device=cfg.device)
-            e_fail = energy_fn(model, xf)
-            if cfg.stop_grad_anchor:
-                with torch.no_grad():
+            loss = ef_loss_fn(model, cfg.batch_labeled)
+            l_stab = None
+            if len(buffer) and (cfg.lam != 0 or cfg.restore_weight > 0):
+                xf, xa, _ = buffer.sample(cfg.batch_pairs, device=cfg.device)
+                e_fail = energy_fn(model, xf)
+                if cfg.stop_grad_anchor:
+                    with torch.no_grad():
+                        e_anchor = energy_fn(model, xa)
+                else:
                     e_anchor = energy_fn(model, xa)
-            else:
-                e_anchor = energy_fn(model, xa)
-            l_stab = margin_loss(e_fail, e_anchor, margin, scale, cfg.stop_grad_anchor)
-            loss = ef_loss_fn(model, cfg.batch_labeled) + cfg.lam * l_stab
-            if cfg.restore_weight > 0:
-                k = worst_bond(xf, bonds, b0)
-                loss = loss + cfg.restore_weight * bond_restoring_loss(
-                    xf, lambda x: energy_fn(model, x), bonds[k], b0[k], cfg.restore_scale)
+                l_stab = margin_loss(e_fail, e_anchor, margin, scale, cfg.stop_grad_anchor)
+                loss = loss + cfg.lam * l_stab
+                if cfg.restore_weight > 0:
+                    k = worst_bond(xf, bonds, b0)
+                    loss = loss + cfg.restore_weight * bond_restoring_loss(
+                        xf, lambda x: energy_fn(model, x), bonds[k], b0[k], cfg.restore_scale)
             optimizer.zero_grad()
             loss.backward()
             torch.nn.utils.clip_grad_norm_(model.parameters(), cfg.grad_clip)
             optimizer.step()
-            if l_stab.item() < cfg.stab_loss_tol:
+            if not cfg.fixed_budget and l_stab is not None and l_stab.item() < cfg.stab_loss_tol:
                 break
-        record.update(steps=step + 1, l_stab=l_stab.item())
+        record.update(steps=step + 1, l_stab=l_stab.item() if l_stab is not None else None)
 
         mae = val_force_mae_fn(model)
         record["val_force_mae"] = mae

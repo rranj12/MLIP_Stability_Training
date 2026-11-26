@@ -29,6 +29,13 @@ from mlipstab.train.crmse_loop import CRMSEConfig, run_crmse  # noqa: E402
 from mlipstab.train.stage_b import StageBConfig, run_stage_b  # noqa: E402
 
 
+def optimizer_summary(optimizer):
+    steps = [float(s["step"]) for s in optimizer.state.values() if "step" in s]
+    return {"state_count": len(optimizer.state), "step_min": min(steps) if steps else None,
+            "step_max": max(steps) if steps else None,
+            "learning_rates": [g["lr"] for g in optimizer.param_groups]}
+
+
 def seed_crmse_buffer(backend, cfg, size):
     """Chains start from a rollout of the pretrained model that is allowed to fail:
     frames up to (and including) each replica's first failure, sampled uniformly."""
@@ -66,8 +73,16 @@ def main():
     cfg["detect"]["bond_threshold"] = backend.train_threshold(cfg["detect"])  # resolves `auto`
     print(f"Stage B bond threshold: {cfg['detect']['bond_threshold']:.3f} Å")
     optimizer = backend.make_optimizer(cfg)
+    initial_optimizer = optimizer_summary(optimizer)
+    print(f"Initial optimizer: {initial_optimizer}")
     ef_loss_fn = backend.make_ef_loss_fn(cfg)
     out = ROOT / cfg["results_dir"] / f"{cfg['molecule']}_{cfg['model']}_seed{cfg['seed']}"
+    out.mkdir(parents=True, exist_ok=True)
+    (out / "run_started.json").write_text(json.dumps({
+        "config": cfg, "optimizer": {"source": backend.optimizer_source,
+                                      "initial": initial_optimizer},
+        "topology": {"bonds": backend.bonds.cpu().tolist(), "b0": backend.b0.cpu().tolist(),
+                     "atomic_numbers": backend.data["train"]["z"].tolist()}}, indent=1))
 
     if args.method == "crmse":
         ccfg = CRMSEConfig(**cfg["crmse"], temperature=cfg["simulate"]["temperature"])
@@ -79,14 +94,23 @@ def main():
         scfg = StageBConfig(**{**cfg["stage_b"], "device": str(backend.device)})
         history = run_stage_b(
             backend.model, optimizer, scfg,
-            simulate_fn=backend.make_simulate_fn(cfg), energy_fn=backend.energy_fn,
+            simulate_fn=backend.make_simulate_fn(cfg, progress_dir=out / "rollouts"), energy_fn=backend.energy_fn,
             ef_loss_fn=ef_loss_fn, val_force_mae_fn=backend.val_force_mae_fn,
             anchor_fn=make_anchor_fn(scfg.anchor, backend.bonds, backend.b0, backend.frames("train")),
             bonds=backend.bonds, b0=backend.b0)
         used = dataclasses.asdict(scfg)
 
     backend.save(out / "ckpt.pt")
-    (out / "history.json").write_text(json.dumps({"config": cfg, "resolved": used, "history": history}, indent=1))
+    report = {"config": cfg, "resolved": used, "history": history}
+    report["optimizer"] = {"source": backend.optimizer_source, "initial": initial_optimizer,
+                           "final": optimizer_summary(optimizer)}
+    if args.method == "margin":
+        planned = scfg.n_cycles * scfg.steps_per_cycle
+        retained = sum(r["steps"] for r in history if not r.get("guardrail_tripped"))
+        report["budget"] = {"planned_updates": planned,
+                            "attempted_updates": sum(r["steps"] for r in history),
+                            "retained_updates": retained, "complete": retained == planned}
+    (out / "history.json").write_text(json.dumps(report, indent=1))
     print(f"wrote {out}")
 
 

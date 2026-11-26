@@ -1,9 +1,9 @@
 # Lambda sweep for the margin loss (scripts/sweep_lambda.py).
 # Each system resolves as datasets[<dataset>] <- defaults <- its own entry; any field can be
 # overridden per system. All paths are relative to the repository root.
-# Every system needs a Stage A checkpoint first (cloud/modal/app.py --steps prepare,pretrain).
+# Every seed needs its own Stage A checkpoint (cloud/modal/app.py --seed N --steps prepare,pretrain).
 
-name: margin_lambda
+name: margin_lambda_fixed_seeded
 # results_dir: results/sweeps      # outputs: <results_dir>/<name>/<system id>/
 
 datasets:
@@ -27,11 +27,11 @@ datasets:
 
 defaults:
   dataset: md17
-  pretrained_dir: null             # Stage A root; null = results/checkpoints/qm_pretrained
+  pretrained_dir: results/checkpoints/qm_pretrained/seed{seed}  # independent Stage A per seed
   train:
-    overrides:                     # Stage B settings from the milestone runs
+    overrides:                     # fixed update budget, independent of failure rate or margin saturation
       simulate: {max_ps: 20.0}
-      stage_b: {n_cycles: 3, batch_labeled: 100, guardrail_rel: 0.15, stop_fail_frac: 0.01}
+      stage_b: {n_cycles: 3, fixed_budget: true, batch_labeled: 100, guardrail_rel: 0.15, stop_fail_frac: 0.01}
       optim: {lr: 1.0e-5}
   select_eval:
     overrides:                     # tune frames only; replica count comes from the dataset's eval config
