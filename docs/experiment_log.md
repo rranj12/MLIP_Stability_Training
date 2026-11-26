@@ -13,13 +13,14 @@ the essential decisions and results are recorded here so they can travel with Gi
 - Seed-isolated pretraining, fixed update budgets, matching optimizer restoration,
   fixed GemNet scaling factors, checkpoint reload and short evaluation have passed.
 - Progress logging and partial-trajectory persistence are **verified on GPU**, including
-  post-timeout recovery. The previous capped run preserved **7.571 ps** for two replicas
-  with zero failures. A new **20 ps / 30-minute-capped** diagnostic is running on
-  November 25 (app `ap-SSODGspmlyG82BVDbHHj6o`, details below). Active margin with
-  the repaired optimizer remains **unverified** pending real failure pairs.
+  post-timeout recovery. The latest **20 ps / 30-minute-capped** diagnostic preserved
+  **19.155 ps per replica**, two replicas, **zero failures**. Timeout occurred before
+  training or evaluation; **0/4 updates** were reached. App `ap-SSODGspmlyG82BVDbHHj6o`
+  is confirmed stopped. Active margin with the repaired optimizer remains **unverified**.
 - Latest local suite: **60 tests passed**, including progress/partial-snapshot regressions.
-- The user authorized committing and pushing the fixes, configs, and this handoff
-  on November 25. The active run's final outcome will be added after verification.
+- Fixes, configs, tests and this handoff were committed and pushed as `6ffeab0` on
+  `fix/margin-scale-and-bond-only-eval`. The final 20 ps diagnostic outcome below
+  is included in a follow-up documentation commit. No further GPU work is running.
 
 ## 2026-11-25 — Repository and experiment direction
 
@@ -354,3 +355,56 @@ MLIP_GPU=A100 MLIP_RUN_TIMEOUT_S=1800 /opt/anaconda3/envs/modal-env/bin/python -
   --eval-ps 0.1 --tag smoke_gemnet_t_naphthalene_20ps_20261125 \
   --eval-overrides='{data: {start_split: tune}, accuracy: {split: tune}, observables: {reference_split: tune}, simulate: {n_replicas: 2, save_every_fs: 5}, nve: null}'
 ```
+
+### Final 20 ps diagnostic result — verified after shutdown
+
+- **No failure pairs; active margin remains unverified.** The 1,800-second function
+  timeout canceled collection at **20:55:49 EST**. The final committed snapshot is
+  step **38,310 / 19.155 ps per replica**, not the full requested 20 ps. It contains
+  **19,156 frames × 2 replicas × 18 atoms × 3 coordinates**. Unsaved steps are unknown.
+- Independent CPU checks found all coordinates finite and **zero failure pairs**.
+  Maximum bond deviations: **0.162823 Å** and **0.165451 Å**, below the existing
+  **0.216182 Å** collection threshold; no events at the paper's 0.5 Å threshold either.
+- **60 progress records**; the 5.573 ps live snapshot exactly matches the corresponding
+  prefix of the final trajectory. Progress was steady at ~21.594 steps/s; this was
+  not a stalled run. Twenty ps alone would take ~30.87 minutes at that rate, before
+  setup or training. The slower 40 GB allocation explains why the hard cap won.
+- **0/4 optimizer updates** were reached. No final `history.json` or `ckpt.pt` was
+  present under the run directory; evaluation never started. Initial optimizer
+  restoration was correct: 121 AdamW states at step 119, LR 1e-5.
+- The function timeout left an app container briefly present. Explicitly stopped
+  only this app and verified **state stopped, zero tasks, 20:57:03 EST**. The execution
+  cap does not remove container shutdown overhead. No retry, new job, model switch,
+  additional pretraining or full sweep was launched.
+- GPU execution estimate: **$1.0494** for 1,800 seconds at the previously checked
+  A100 40 GB rate of $0.000583/s. Excludes CPU/RAM, startup/shutdown overhead and
+  credits; not an invoice.
+- Local evidence: `results/smoke/gemnet_t_naphthalene_20ps_20261125/` contains
+  final/live trajectories, metadata, progress, verification JSON, remote-file listing,
+  logs, exact launch command, read-only CPU verification script, README and bond plot.
+  Binaries stay outside Git; essential findings and the command are recorded here.
+- Re-ran the local suite before sharing the code: **60 tests passed in 26.93 s**.
+  No application code was changed during this diagnostic.
+
+### Research direction discussed after the negative result
+
+The user needs a class-project demonstration and asked about deliberately eliciting
+failures. A transparent, controlled stress test is a possible next experiment;
+no such test has been launched or claimed successful.
+
+1. Controlled bond distortions can check that the margin loss raises distorted
+   structures' energies relative to valid anchors. This is a mechanism/gradient
+   check, not evidence of better MD trajectories.
+2. A higher-temperature or other predeclared challenge can test actual stability
+   improvement. Pilot the challenge using the baseline, freeze the settings before
+   comparing methods, and evaluate on separate trajectories/starts/seeds. Compare
+   with lambda zero under equal update budgets; report force MAE and failures,
+   including ordinary-condition evaluation. Keep the criterion identical across arms.
+3. A paper reproduction requires a comparably trained baseline and matching data
+   and simulation protocol. The present one-epoch rMD17/Langevin smoke is not that.
+
+A lack of baseline failures limits measurable improvement over the chosen horizon.
+It neither validates nor disproves the proposed loss. Do not infer improved accuracy
+or dynamics merely from intact bonds, or count synthetic distortion checks as natural
+rollout failures. Establish baseline suitability before another expensive failure
+search; the existing sweep configs remain provisional and unlaunched.
