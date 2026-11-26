@@ -1,6 +1,7 @@
 """CPU preparation, then one upstream epoch; 3300s cap after a failed import attempt.
 
-    modal run --detach cloud/modal/fane_pilot.py
+    modal run --detach cloud/modal/fane_pilot.py::main
+    modal run --detach cloud/modal/fane_pilot.py::md_test  # MD only, no training
 
 The supported Modal host runs an isolated Python 3.9 training environment.
 """
@@ -62,13 +63,14 @@ image = (
           "LD_LIBRARY_PATH": "/usr/local/cuda-11.3/targets/x86_64-linux/lib:/usr/local/nvidia/lib:/usr/local/nvidia/lib64"})
     .add_local_file(LOCAL / "configs/reproduce/fane_gemnet_t_naphthalene/train.yml", "/opt/train.yml")
     .add_local_file(LOCAL / "scripts/fane_pilot.py", "/opt/fane_pilot.py")
+    .add_local_file(LOCAL / "scripts/fane_md_smoke.py", "/opt/fane_md_smoke.py")
 )
 app = modal.App("fane-gemnet-naphthalene-pilot", image=image)
 volume = modal.Volume.from_name("mlipstab")
 
 
-def run_script(phase):
-    with subprocess.Popen([PYTHON, "/opt/fane_pilot.py", phase], start_new_session=True) as process:
+def run_script(phase, script="/opt/fane_pilot.py"):
+    with subprocess.Popen([PYTHON, script, phase], start_new_session=True) as process:
         try:
             while True:
                 try:
@@ -99,6 +101,30 @@ def pilot():
 @app.function(volumes={"/vol": volume}, timeout=300, cpu=4, memory=16384, retries=0)
 def verify_checkpoint():
     run_script("verify")
+
+
+@app.function(volumes={"/vol": volume}, timeout=1800, cpu=4, memory=16384, retries=0)
+def prepare_md_reference():
+    run_script("prepare", "/opt/fane_md_smoke.py")
+
+
+@app.function(gpu="A100-80GB", volumes={"/vol": volume}, timeout=1800,
+              cpu=4, memory=16384, retries=0)
+def md_smoke():
+    run_script("run", "/opt/fane_md_smoke.py")
+
+
+@app.function(volumes={"/vol": volume}, timeout=300, cpu=4, memory=16384, retries=0)
+def audit_md():
+    run_script("audit", "/opt/fane_md_smoke.py")
+
+
+@app.local_entrypoint()
+def md_test():
+    """Run only the capped MD diagnostic: no training or sweep."""
+    prepare_md_reference.remote()
+    md_smoke.remote()
+    audit_md.remote()
 
 
 @app.local_entrypoint()

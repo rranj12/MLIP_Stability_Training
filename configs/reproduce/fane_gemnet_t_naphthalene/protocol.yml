@@ -1,5 +1,5 @@
 # Experiment manifest, NOT a trainer input.
-status: timing_pilot_completed_full_training_not_launched
+status: timing_pilot_and_capped_md_completed_full_training_not_launched
 source:
   repository: https://github.com/kyonofx/MDsim
   commit: 61ca2cfba373fd374343592556789fa30fbe3b56
@@ -24,6 +24,10 @@ data:
   loader_note: released LMDB length stores the last index; unmodified upstream loader
     omits one record per split. Preserved for protocol reproduction.
   archive_md5_verified: 2f895e74a32793e37da43b961ce8edb2
+  full_reference_frames: 326250
+  full_reference_url: https://www.quantum-machine.org/gdml/data/npz/md17_naphthalene.npz
+  full_reference_sha256: 8939b910d1e91870db7515baa9d49d23169fdf8108687c4c0659afe38a6f053d
+  full_reference_split_crosscheck: passed
   split_random_state: 123
   energy_units: eV
   force_units: eV/Angstrom
@@ -109,6 +113,37 @@ timing_pilot:
   md_steps: 0
   margin_updates: 0
   convergence_demonstrated: false
+md_diagnostic:
+  status: completed_horizon_reached_no_failure
+  app_id: ap-9Ye6V7M34Q53qG3zRA2OPj
+  app_stopped: true
+  checkpoint: pilot_seed0_retry1/md17-naphthalene_10k_gemnet_t_pilot_seed0/checkpoints/best_checkpoint.pt
+  checkpoint_training_epochs: 1
+  requested_seed: 123
+  init_idx: 857
+  initialization: preserve upstream seed_everywhere, calculator reseed from training
+    config, then MaxwellBoltzmannDistribution; save actual momenta
+  max_ps: 20
+  gpu_timeout_s: 1800
+  internal_wall_stop_s: 1650
+  save_every_steps: 100
+  failure_threshold_A: 0.5
+  failure_detector_note: same notebook geometry criterion, including terminal frame;
+    audit separately reports literal notebook result, which omits terminal frame
+  training_updates: 0
+  full_benchmark: false
+  simulated_ps: 20.0
+  md_steps: 40000
+  saved_frames: 401
+  first_bond_failure_ps: null
+  right_censored: true
+  max_bond_deviation_A: 0.21694536483529459
+  max_deviation_at_ps: 18.7
+  elapsed_s: 1106.792315375
+  gpu_compute_estimate_usd: 0.76811386687025
+  failure_pairs: 0
+  audit: passed
+  checkpoint_sha256: a4052ed4efc2ac6451655fa9cb4410e8a5e11c63ff891aac7836343f8782f9ae
 budget:
   launch_authorized: false
   one_epoch_pilot_authorized: true
@@ -139,10 +174,8 @@ budget:
 open_items:
 - Reconcile October 2024 corrected manuscript with arXiv v2 results; the current OpenReview
   PDF was inaccessible.
-- Obtain full original MD17 reference trajectory for the notebook bond-length metric;
-  the released training/validation/test splits are prepared and validated.
-- Implement and validate the audited notebook bond metric in the reproduction runner;
-  native upstream temperature early_stop is not that metric.
+- Full reference and capped-run bond audit are verified, but the one-epoch diagnostic
+  produced no failures through 20 ps. The full five-trajectory benchmark remains unrun.
 - Agree a full-training execution budget using measured pilot throughput; convergence
   duration remains unknown. Do not launch full training or sweeps yet.
 - MD17 is described as nonperiodic in the paper, but upstream uses a 30 Angstrom box

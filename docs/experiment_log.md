@@ -7,6 +7,11 @@ the essential decisions and results are recorded here so they can travel with Gi
 
 ## Current status
 
+- The capped original-MD17 one-epoch EMA checkpoint MD diagnostic completed:
+  **20 ps, one trajectory, zero detected bond failures and zero failure pairs**.
+  Largest saved-frame deviation **0.21695 Å**, below the benchmark's **0.5 Å**.
+  Independent CPU trajectory/time/metric audit passed. Approximately **18.45 min
+  GPU runner time / $0.77 GPU compute**. **No further training or sweep is authorized.**
 - Paper-baseline replication configs are prepared and statically validated:
   [setup, cost scenarios and remaining prerequisites](fane_reproduction.md).
   Original MD17 data/environment preparation and the **single-epoch timing pilot
@@ -20,7 +25,7 @@ the essential decisions and results are recorded here so they can travel with Gi
 - Seed-isolated pretraining, fixed update budgets, matching optimizer restoration,
   fixed GemNet scaling factors, checkpoint reload and short evaluation have passed.
 - Progress logging and partial-trajectory persistence are **verified on GPU**, including
-  post-timeout recovery. The latest **20 ps / 30-minute-capped** diagnostic preserved
+  post-timeout recovery. The earlier **rMD17 20 ps / 30-minute-capped** diagnostic preserved
   **19.155 ps per replica**, two replicas, **zero failures**. Timeout occurred before
   training or evaluation; **0/4 updates** were reached. App `ap-SSODGspmlyG82BVDbHHj6o`
   is confirmed stopped. Active margin on naturally collected failures remains
@@ -33,6 +38,73 @@ the essential decisions and results are recorded here so they can travel with Gi
   `fix/margin-scale-and-bond-only-eval`. The final 20 ps diagnostic outcome below
   is included in a follow-up documentation commit. The new reproduction pilot is
   tracked in the entry below; full training and all sweeps remain prohibited.
+
+## 2026-11-25 — Capped MD on the original-MD17 pilot checkpoint
+
+- User authorized a capped MD diagnostic before spending more on training. This
+  evaluates the **one-epoch EMA checkpoint**, not the converged published model.
+- One predeclared trajectory: requested seed 123, original-MD17 test index 857,
+  upstream `OCPCalculator`, `NoseHoover` and `Simulator` initialization, 500 K,
+  0.5 fs, `ttime=20`; up to **40,000 steps / 20 ps**, saved every 100 steps/0.05 ps.
+  The authors' released implementation remains pinned and unmodified. The small
+  runner adds observation, budget enforcement and early exit on measured bond failure.
+- GPU hard cap **1,800 s**, internal wall stop **1,650 s**, no automatic retries;
+  maximum GPU compute approximately **$1.25**, plus CPU/RAM. CPU reference preparation
+  precedes GPU allocation; trajectory/log snapshots are committed every 30 seconds.
+- `scripts/fane_md_smoke.py` prepares the full original MD17 reference from the
+  official `md17_naphthalene.npz` URL, checks sample coordinates/labels and original
+  frame IDs against the released LMDB splits, and records its SHA256. Reference
+  lengths use all reference frames and the exact notebook periodic-distance helper.
+  Topology uses the first simulation structure and the notebook's ASE NeighborList
+  defaults. Failure is **max bonded deviation >0.5 Å**, at saved-frame cadence.
+- Two metric regression tests passed: periodic boundaries/strict threshold/terminal
+  failure detection, and maximum deviation across bonds against reference means. A CPU post-run audit
+  will independently compare trajectory frames, bond records and thermodynamic times.
+- Two upstream details are made explicit: calculator construction reseeds from the
+  training config (seed 0), so we preserve the authors' initialization order and
+  save actual initial momenta. The notebook loop omits the last saved frame; our
+  detector includes it, and the audit reports the literal notebook value separately.
+- This is a **shortened benchmark-protocol diagnostic**, not the paper's five
+  trajectories up to 300 ps or a replication of its reported 8 ± 2 ps result.
+  Environment/hardware/seed provenance and the 2024 code/paper correction caveats
+  remain. No margin training is part of this run; if a bond failure occurs, save
+  its frame and preceding saved frame for later investigation.
+- **Result: no detected failure through 20.000 ps** (40,000 MD steps, 401 saved
+  frames including the initial frame). This is a right-censored observation at
+  the configured horizon, **not a failure time of 20 ps**. The largest measured
+  bond deviation was **0.216945365 Å at 18.7 ps**, below 0.5 Å. No temperature
+  guard/numerical error occurred, no failure-pair file was created, and **zero
+  training/margin updates** were performed. Neither full training nor a sweep ran.
+- Runner elapsed **1,106.792 s / 18.45 min**, below the 1,650 s internal and
+  1,800 s hard caps. Rate-based GPU compute estimate **$0.7681**, excluding
+  CPU/RAM, startup/shutdown, storage and credits; this is not an invoice.
+- Independent CPU audit passed: all **401** trajectory frames match online bond
+  records, step indices and thermo-log times agree, and the full-reference criterion
+  detects no failure. The literal notebook loop also detects no failure; its
+  numeric horizon value is 20 ps. Checkpoint SHA256 matches the original downloaded
+  EMA artifact: `a4052ed4efc2ac6451655fa9cb4410e8a5e11c63ff891aac7836343f8782f9ae`.
+- Original reference: **326,250 frames**, official file SHA256
+  `8939b910d1e91870db7515baa9d49d23169fdf8108687c4c0659afe38a6f053d`.
+  Cross-checks against original frame IDs, positions, atom identities, forces and
+  energies in all three released splits passed. No extra full test-MAE pass was
+  run; the 17.64 meV/Å number remains the earlier **validation** result.
+- Artifacts on volume `mlipstab` and under ignored local `results/`:
+  `results/reproduce/fane_gemnet_t_naphthalene/md_smoke_seed123_init857_20ps/`.
+  Includes `atoms.traj`, `thermo.log`, `bond_progress.jsonl`, initial/final state,
+  checkpoint/reference provenance, `result.json`, and `audit.json`.
+  App: `ap-9Ye6V7M34Q53qG3zRA2OPj`.
+- The client reported completion while a status snapshot still showed teardown
+  containers. An explicit stop request confirmed the app had already stopped at
+  **23:38:58 America/New_York**; final status is **stopped, zero tasks**. Entire app
+  lifetime was 21 minutes including CPU preparation/audit, below the 30-minute GPU
+  allowance. The $0.7681 estimate covers active runner time, not container overhead.
+- Interpretation: this **did not reproduce the older paper's ~8 ps failure**.
+  It tests the authors' MD recipe on our **one-epoch checkpoint**, one initial
+  structure, and a shortened horizon. It does not establish the behavior of a
+  converged model or an improvement from our loss. Hold off on additional paid
+  training while reconciling the 2024 paper/code correction; more training is
+  not guaranteed to produce failures. The user explicitly expressed concern
+  about the project's assumed failure case; that uncertainty remains unresolved.
 
 ## 2026-11-25 — Original MD17 environment and one-epoch timing pilot
 
@@ -111,6 +183,8 @@ the essential decisions and results are recorded here so they can travel with Gi
 
 ## 2026-11-25 — Proposed training budget after timing pilot (not authorized)
 
+- **On hold after the capped MD result above:** the 20-ps diagnostic produced no
+  failures. Reconcile the paper/code correction before acting on this proposal.
 - User requested an estimate/recommendation only; **do not launch**. No new
   training, simulation or sweep was started, and no execution config was changed.
 - At approximately 23 minutes/epoch, one model/seed costs about $2.81/hour with

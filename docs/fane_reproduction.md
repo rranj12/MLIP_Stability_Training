@@ -5,6 +5,8 @@ user's downloaded / arXiv v2 paper: 1.5 meV/Å force MAE and 8 ± 2 ps stability
 These are reference observations, not guaranteed outcomes or training targets to
 select runs against. Original MD17 data and the isolated environment are prepared;
 a one-epoch timing pilot **completed** within a cumulative one-GPU-hour cap.
+The subsequent single-trajectory MD diagnostic completed **20 ps without a detected
+bond failure**. This has **not reproduced the older paper's reported ~8 ps failure**.
 Full training and sweeps remain unauthorized.
 
 ## Configs and execution stack
@@ -62,7 +64,11 @@ The pilot preserves this behavior, so one epoch means **9,499 updates** at batch
 Finite-array, sample-label/position agreement, metadata and full-model CPU
 energy/force/backward checks passed. Provenance and checks live alongside the
 data in `provenance.json` and `validation.json` on volume `mlipstab`.
-The full original reference trajectory for later bond-length analysis remains pending.
+The full original reference trajectory is now prepared: 326,250 frames from the
+[official original-MD17 file](https://www.quantum-machine.org/gdml/data/npz/md17_naphthalene.npz).
+Its SHA256 is `8939b910d1e91870db7515baa9d49d23169fdf8108687c4c0659afe38a6f053d`.
+Sample original frame IDs, positions, atom identities, energies and forces agree
+with all three released splits. The capped diagnostic uses full-trajectory bond means.
 
 `normalize_labels: false` is intentional: upstream still subtracts training mean
 energy but uses unit scale for energy and force. Do not disable mean subtraction.
@@ -112,10 +118,40 @@ reference lengths over the **full original MD17 reference trajectory**, using
 30 Å periodic distances. It scans saved frames for a deviation >0.5 Å. This differs
 from our training-only topology/mean and 0.216 Å collection threshold.
 The upstream MD runner's early-stop flag instead detects temperatures outside
-0.1–100,000 K. Do not report that flag as the 0.5 Å bond failure time. The notebook
-metric needs a validated analysis step, including frame/log alignment and censoring,
-before this is a complete executable reproduction pipeline. No metric implementation
-or extra simulation was added in this configuration-only task.
+0.1–100,000 K. Do not report that flag as the 0.5 Å bond failure time.
+`scripts/fane_md_smoke.py` now implements the notebook geometry criterion and
+independently audits trajectory/log alignment and censoring. The diagnostic checks
+the terminal frame too, which the literal notebook loop omits; both results are
+reported separately. The full five-trajectory benchmark has not been run.
+
+## Capped MD diagnostic on the one-epoch checkpoint
+
+Requested seed 123, predeclared test index 857; 500 K Nosé–Hoover, 0.5 fs,
+`ttime=20`, 100-step saving, one trajectory up to 20 ps or first bond failure.
+GPU hard timeout 1,800 s, internal wall stop 1,650 s; no training or automatic retries.
+The authors' initialization order is preserved: calculator construction reseeds
+from its training config (seed 0), then Maxwell–Boltzmann momenta are drawn.
+Actual initial momenta and checkpoint identity are saved.
+
+**Outcome:** 40,000 steps / **20.000 ps**, 401 saved frames, **no detected bond
+failure**. Maximum deviation **0.216945365 Å at 18.7 ps**, below the **0.5 Å**
+criterion. No temperature guard/numerical failure; **zero failure pairs**.
+Runtime **1,106.792 s / 18.45 min**, approximately **$0.7681 GPU compute**, before
+CPU/RAM, startup/shutdown overhead, storage or credits. Independent CPU audit passed.
+This is a censored observation at the horizon, not a failure time of 20 ps.
+
+Artifacts: volume `mlipstab` and local ignored results folder
+`results/reproduce/fane_gemnet_t_naphthalene/md_smoke_seed123_init857_20ps/`.
+Entry point: `modal run --detach cloud/modal/fane_pilot.py::md_test`; it refuses to
+overwrite this completed diagnostic. See the ongoing log for the app and full audit.
+
+This matches the documented **MD recipe**, with explicitly noted implementation
+details, on a **one-epoch** checkpoint. It is not a replication of the paper's
+converged checkpoint, five 300-ps trajectories, final test accuracy, or its older
+8 ± 2 ps result. More training is not guaranteed to create failures. Reconcile the
+2024 correction before funding a longer training run on that assumption.
+
+## Remaining replication differences
 
 Other differences are recorded rather than silently chosen:
 
