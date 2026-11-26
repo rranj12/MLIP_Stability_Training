@@ -1,6 +1,6 @@
 # Ongoing experiment log
 
-Last updated: 2026-11-25. Append dated entries as experiments finish; keep this
+Last updated: 2026-11-26. Append dated entries as experiments finish; keep this
 status summary current. This is the teammate handoff record. Detailed binaries,
 logs and metrics live in ignored `results/` locally and on Modal volume `mlipstab`;
 the essential decisions and results are recorded here so they can travel with Git.
@@ -38,6 +38,28 @@ the essential decisions and results are recorded here so they can travel with Gi
   `fix/margin-scale-and-bond-only-eval`. The final 20 ps diagnostic outcome below
   is included in a follow-up documentation commit. The new reproduction pilot is
   tracked in the entry below; full training and all sweeps remain prohibited.
+
+## 2026-11-26 — Search for corrected paper and published checkpoint
+
+- Rechecked public sources without launching compute. The corrected TMLR PDF
+  remains behind OpenReview browser verification; **whether 8 +/- 2 ps survives
+  the correction is still unknown**. Further paid runs remain on hold.
+- GitHub API confirms upstream main unchanged, only one branch and no releases.
+  Its only checkpoint files are the SchNet/water example. The linked Zenodo
+  release supplies data, not an advertised naphthalene checkpoint. Inspected all
+  11 public issue bodies; none provided the missing weights or corrected result.
+- Recorded the released GemNet training recipe and the unresolved 2,000-paper /
+  10,000-YAML epoch cap difference. The actual published model's training duration,
+  seed, checkpoint identity and MD starts are still missing.
+- Found and locally confirmed an additional upstream selection ambiguity:
+  `update_best` saves on worsening force MAE as well as improvements. A dummy
+  invocation of the parsed method confirmed the behavior; no model or dataset
+  was loaded. This was not exercised by our one-epoch pilot's single validation,
+  and is not evidence about the cause of the paper's 8 ps result. Code unchanged.
+- Detailed source links are in [the reproduction audit](fane_reproduction.md#public-artifact-and-training-audit-2026-11-26).
+  Prepared an [author request](fane_author_request.md), **not sent**. The useful
+  user action is to obtain the latest TMLR PDF after normal browser verification;
+  author clarification may still be needed for the checkpoint/run provenance.
 
 ## 2026-11-25 — Correction audit and gradient-check explanation
 

@@ -80,6 +80,9 @@ With identifier `seed0`, the expected model directory is
 `best_training_checkpoint.pt`. Model seed 0 is the upstream CLI default, not a
 verified seed for the published table checkpoint. We did not find that exact
 checkpoint in the authors' public repository listing.
+The filename does not establish best validation selection: the released trainer's
+`update_best` condition also saves when MAE worsens. See the November 26 audit
+below; do not silently change this behavior in a claimed upstream reproduction.
 
 ## Future commands — do not run until separately authorized
 
@@ -290,3 +293,63 @@ not treat 8 +/- 2 ps as a verified target for the corrected implementation.
 Next required evidence is the corrected manuscript's MD17 table and correction
 statement from [the TMLR record](https://openreview.net/forum?id=A8pqQipwkt).
 No new training, MD or sweep was launched for this audit.
+
+### Public artifact and training audit (2026-11-26)
+
+**Decision: keep paid training and MD on hold.** The corrected naphthalene result
+is still unknown. OpenReview again returned browser verification; the authors'
+institutional publication listing links to that same TMLR record. No accessible,
+verified post-correction manuscript was obtained. An old arXiv/workshop PDF is
+not a substitute for the revised table.
+
+Public checkpoint search, checked via GitHub API and the linked Zenodo record:
+
+- Upstream main is still `61ca2cfba373fd374343592556789fa30fbe3b56`; its only
+  branch is `main` and its GitHub releases list is empty.
+- The recursive repository tree lists only `example_model/water_1k_schnet/`
+  checkpoint files. These are not GemNet-T or naphthalene weights.
+- The [Zenodo record](https://zenodo.org/records/7196767) distributes the
+  preprocessed data archive plus water and alanine source arrays; it does not
+  list a model checkpoint release.
+- All 11 public issue bodies were inspected. None supplied a GemNet-T/naphthalene
+  checkpoint or a correction-specific replacement result. This is a bounded
+  search finding, not a claim that the authors cannot supply the weights.
+
+The released [GemNet config](https://github.com/kyonofx/MDsim/blob/61ca2cfba373fd374343592556789fa30fbe3b56/configs/md17/gemnet-T.yml)
+and [base config](https://github.com/kyonofx/MDsim/blob/61ca2cfba373fd374343592556789fa30fbe3b56/configs/md17/base.yml)
+provide a recipe, but not the exact historical run:
+
+| Item | Released setting |
+| --- | --- |
+| Model | 4 blocks, atom/edge embeddings 128, triplet embedding 64, 7 spherical / 6 radial bases |
+| Neighbors | 5 Å cutoff, maximum 50 neighbors, on-the-fly graph |
+| Forces | Negative energy gradient (`direct_forces: false`) |
+| Optimizer | AdamW, LR 0.001, epsilon 1e-7, weight decay 2e-6, AMSGrad enabled |
+| Batch / losses | Batch 1, energy MAE weight 1, force L2MAE weight 1000 |
+| Stabilization | Gradient clipping 10, EMA decay 0.999, provided scale JSON |
+| Scheduler | ReduceLROnPlateau, factor 0.8, patience 5, minimum LR 1e-6 |
+| Stop rules | YAML 10,000 epochs; 604,800 seconds; trainer stops at LR <=1e-6 |
+| Paper discrepancy | ArXiv v2 Table 7 specifies at most 2,000 MD17 epochs |
+
+The paper's seven-day V100 budget is an upper limit, not evidence that this
+specific checkpoint trained seven days. We still lack its actual epoch/update
+count, model seed, resolved run config, selected checkpoint identity and five MD
+initial conditions/momenta. The released base YAML defaults to aspirin, requiring
+a molecule override for naphthalene; our separate config already does this.
+
+**Additional source-level checkpoint ambiguity:** in
+[`trainer.py:785`](https://github.com/kyonofx/MDsim/blob/61ca2cfba373fd374343592556789fa30fbe3b56/mdsim/trainers/trainer.py#L785),
+`update_best` uses `(is_mae and new < best) or (new > best)`. For the default
+`forces_mae` metric, either an improvement or a worsening triggers a save.
+A local isolated execution of that exact parsed method with a dummy trainer
+confirmed that changing MAE from 0.01 to 0.02 calls `save` and changes the stored
+best value to 0.02. No model was loaded and no training ran. This does not tell us
+which checkpoint the authors actually used or explain their failure result. It
+does mean that `best_checkpoint.pt` alone cannot certify a best-validation model.
+Our one-epoch pilot had only one scheduled validation, so this worsening-selection
+case was not exercised there. No upstream or training code was changed.
+
+Next evidence required: obtain the current TMLR PDF through normal browser access,
+then request the authors' actual evaluation weights, resolved config and run/MD
+provenance if no public checkpoint is linked. A ready-to-send, **unsent** request
+is in [fane_author_request.md](fane_author_request.md).

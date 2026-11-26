@@ -42,6 +42,9 @@ training:
   early_stopping_time_s: 604800
   evaluation_checkpoint: checkpoints/best_checkpoint.pt
   checkpoint_weights: upstream EMA export, not our best_training_checkpoint.pt
+  checkpoint_selection_caveat: upstream update_best also saves on worsening MAE;
+    filename does not establish best-validation selection. Actual published checkpoint
+    provenance remains unverified; see docs/fane_reproduction.md November 26 audit.
 evaluation:
   replicas:
   - seed: 123
