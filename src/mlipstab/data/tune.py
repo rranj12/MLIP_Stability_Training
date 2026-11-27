@@ -17,6 +17,21 @@ def tune_pool(n_total, used_idx, n_frames, seed=0):
     return np.sort(np.random.default_rng(seed + 1).choice(candidates, size=n, replace=False))
 
 
+def used_by_positions(raw_R, split_Rs, tol=1e-4):
+    """Indices into raw_R (T, N, 3) of every frame in split_Rs, matched on coordinates within tol Å.
+    For datasets whose prepared splits do not record raw-file indices (Fu et al.'s archive)."""
+    from scipy.spatial import cKDTree
+
+    tree = cKDTree(raw_R[:, 0])  # candidates by the first atom, then confirm on all atoms
+    used = []
+    for r in np.concatenate(split_Rs):
+        match = [i for i in tree.query_ball_point(r[0], tol) if np.abs(raw_R[i] - r).max() < tol]
+        if len(match) != 1:
+            raise ValueError(f"split frame matched {len(match)} raw frames")
+        used.append(match[0])
+    return np.unique(used)
+
+
 def write_tune(base, idx, z, R, E, F):
     """Write <base>/tune/nequip_npz.npz in the other splits' format (no LMDB: never trained on).
     Written to a temp file and renamed, so concurrent readers never see a partial file."""
