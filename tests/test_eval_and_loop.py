@@ -1,4 +1,5 @@
 import numpy as np
+import pytest
 import torch
 
 from mlipstab.buffer import FailureBuffer
@@ -70,17 +71,47 @@ def test_stage_b_raises_failure_energy_and_stops():
     assert len(hist) == 2  # second rollout has no failures -> stop
 
 
-def test_stage_b_guardrail_restores_weights():
+@pytest.mark.parametrize("fixed_budget", [False, True])
+def test_stage_b_guardrail_restores_weights(fixed_budget):
     model = Toy()
     opt = torch.optim.SGD(model.parameters(), lr=0.1)
     maes = iter([1.0, 2.0])  # baseline, then a 100% jump
-    cfg = StageBConfig(n_cycles=3, steps_per_cycle=5)
+    cfg = StageBConfig(n_cycles=3, steps_per_cycle=5, fixed_budget=fixed_budget)
     hist = run_stage_b(model, opt, cfg,
                        simulate_fn=lambda m: (torch.ones(2, 2, 3), torch.zeros(2, 2, 3), 0.5),
                        energy_fn=lambda m, x: m.a * (x ** 2).sum(dim=(1, 2)),
                        ef_loss_fn=lambda m, b: torch.zeros(()),
                        val_force_mae_fn=lambda m: next(maes), log=lambda *_: None)
     assert hist[-1]["guardrail_tripped"] and model.a.item() == 0.0
+
+
+@pytest.mark.parametrize("lam", [0.0, 1.0])
+@pytest.mark.parametrize("scenario", ["no_failures", "below_target", "margin_satisfied"])
+def test_fixed_budget_keeps_supervised_updates(lam, scenario):
+    model = Toy()
+    opt = torch.optim.SGD(model.parameters(), lr=0.1)
+    cfg = StageBConfig(n_cycles=3, steps_per_cycle=4, fixed_budget=True, lam=lam)
+    calls = {"ef": 0}
+    fail = torch.ones(2, 2, 3) if scenario != "no_failures" else torch.empty(0, 2, 3)
+
+    def energy(m, x):
+        assert lam > 0, "lambda=0 must not depend on failure-energy calculations"
+        # The margin is already satisfied; the shared offset has zero margin gradient.
+        return m.a + 100 * (x ** 2).sum(dim=(1, 2))
+
+    def ef_loss(m, batch):
+        calls["ef"] += 1
+        return (m.a - 1) ** 2
+
+    cfg.grad_clip = 10.0
+    hist = run_stage_b(model, opt, cfg,
+                       simulate_fn=lambda m: (fail, torch.zeros_like(fail),
+                                              0.5 if scenario == "margin_satisfied" else 0.001),
+                       energy_fn=energy, ef_loss_fn=ef_loss,
+                       val_force_mae_fn=lambda m: 1.0, log=lambda *_: None)
+    assert calls["ef"] == 12
+    assert [r["steps"] for r in hist] == [4, 4, 4]
+    assert model.a.item() == pytest.approx(1 - 0.8 ** 12)
 
 
 def test_stage_b_runs_with_counterfactual_anchor_and_restoring_hinge():

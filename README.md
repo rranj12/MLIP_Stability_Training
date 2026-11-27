@@ -20,6 +20,9 @@ bond-restoring force hinge. See [docs/design_notes.md](docs/design_notes.md).
 
 ## Status
 
+Current experiments, fixes, run IDs, and next steps are maintained in
+[the ongoing experiment log](docs/experiment_log.md).
+
 | Piece | State |
 |---|---|
 | Margin loss, localized variant, CRMSE term + ULA step | implemented, unit-tested |
@@ -28,11 +31,11 @@ bond-restoring force hinge. See [docs/design_notes.md](docs/design_notes.md).
 | Stage B loop (simulate → detect → buffer → learn → guardrail) | implemented, unit-tested with toy callables |
 | Stability time, Kaplan–Meier, h(r), dihedral free energy | implemented, unit-tested |
 | rMD17 download + splits | implemented, checked on real ethanol data |
-| rMD17 → StABlE LMDB layout (`scripts/prepare_rmd17.py`) | implemented, needs a run in the full env |
+| rMD17 → StABlE LMDB layout (`scripts/prepare_rmd17.py`) | verified on real naphthalene in the GPU smoke pipeline |
 | Pretraining / StABlE baseline wrappers | thin wrappers around the submodule |
-| MDsim glue (`mlipstab.mdsim_backend`), Stage B and CRMSE scripts, evaluation harness | implemented; loops unit-tested and smoke-tested with a toy model, not yet run against real SchNet/NequIP checkpoints on a GPU |
+| MDsim glue (`mlipstab.mdsim_backend`), Stage B and CRMSE scripts, evaluation harness | GemNet-T/naphthalene training, optimizer continuation and evaluation GPU smoke verified; see experiment log for active-margin verification; CRMSE and other models are not validated by this smoke |
 | NequIP rMD17 pretraining (`scripts/pretrain.sh nequip <mol>`) | implemented from StABlE's MD17 NequIP configs, not yet run |
-| MD22 molecules and GemNet-T (`scripts/prepare_md22.py`, `DATASET=md22 scripts/pretrain.sh`, model `gemnet_t`) | implemented; whole pipeline run on CPU with synthetic data for SchNet, GemNet-T and NequIP, not yet on real MD22 data or a GPU |
+| MD22 molecules and GemNet-T (`scripts/prepare_md22.py`, `DATASET=md22 scripts/pretrain.sh`, model `gemnet_t`) | GemNet-T GPU smoke run on real rMD17 naphthalene; real MD22 GPU validation remains outstanding |
 | MACE, analysis scripts | to add |
 
 ## Layout
@@ -100,6 +103,11 @@ lower `simulate.n_replicas` to about 16 and pass `--optim.batch_size=16` to
 `scripts/pretrain.sh`.
 
 ## Experiment plan
+
+GemNet-T on naphthalene and aspirin has a per-system lambda sweep in
+`configs/sweep/gemnet_t.yml`, with fixed Stage B update budgets and independent
+Stage A checkpoints per seed. Setup, protocol and launch commands:
+[lambda sweeps](docs/lambda_sweeps.md).
 
 Core: {ethanol, aspirin} × {SchNet, NequIP} × {baseline, StABlE, CRMSE, ours} × 3 seeds,
 all from the same Stage A checkpoint, evaluated with 256 Langevin replicas at 500 K for

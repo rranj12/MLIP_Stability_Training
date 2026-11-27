@@ -1,0 +1,18 @@
+# Use pinned upstream MDsim simulate.py; our evaluate.py is Langevin-only.
+# This is one trajectory; protocol.yml lists five predeclared starts/seeds.
+# Bond stability is a postprocessed metric, not this runner's temperature guard.
+model_dir: /vol/results/reproduce/fane_gemnet_t_naphthalene/md17-naphthalene_10k_gemnet_t_seed0
+dataset_src: /vol/data/forces_not_enough/md17/naphthalene/10k/test
+identifier: 300ps
+sim_type: ocp
+seed: 123
+save_freq: 100
+steps: 600000
+max_test_points: 10000
+kcal: false
+T_init: 500.0
+integrator: NoseHoover
+integrator_config:
+  timestep: 0.5
+  temperature: 500.0
+  ttime: 20.0

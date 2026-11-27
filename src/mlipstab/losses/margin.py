@@ -7,9 +7,9 @@ the margin. Without it (s = 1 eV) the transition is ~23 k_B T wide at 500 K, wid
 than a 10 k_B T margin, and the loss never switches off.
 
 Gradients flow through BOTH energies by default, so the penalty gradient is
-sigma((m - gap)/s) * [dU(x_fail)/dtheta - dU(x_anchor)/dtheta] and any shift common
+sigma((m - gap)/s) * [dU(x_anchor)/dtheta - dU(x_fail)/dtheta] and any shift common
 to all energies (e.g. a readout bias) cancels. With a stop-gradient on the anchor
-the gradient is dU(x_fail)/dtheta alone: it keeps pushing a global energy offset
+the gradient is proportional to -dU(x_fail)/dtheta alone: descent pushes a global energy offset
 up, which changes no force but fights the energy term of L_EF and biases energies.
 `stop_grad_anchor=True` is kept only as an ablation.
 """

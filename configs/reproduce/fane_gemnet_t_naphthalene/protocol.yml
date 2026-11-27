@@ -1,0 +1,192 @@
+# Experiment manifest, NOT a trainer input.
+status: timing_pilot_and_capped_md_completed_full_training_not_launched
+source:
+  repository: https://github.com/kyonofx/MDsim
+  commit: 61ca2cfba373fd374343592556789fa30fbe3b56
+  paper_reference: https://arxiv.org/pdf/2210.07237v2
+  verified_eic_revision_pdf: https://openreview.net/notes/edits/attachment?id=yveYNGOUOK&name=pdf
+  verified_eic_revision_date: '2024-10-29'
+  verified_eic_pdf_sha256: bc3b3771d17a69e456daea2e4a5e407beff110d24e7420409659f1807e93c595
+  verified_eic_supplement_sha256: 2ff9af924ab89a1b7cf173d2ec8c8c42bf262b7c6dbc7a1e117784033dc795f2
+  correction_audit: Table 3 page 8 retains GemNet-T naphthalene 8 +/- 2 ps and
+    force MAE 1.5 meV/Angstrom. Supplement has no weights, lacks wrapping fix,
+    and defaults energy loss to MSE versus current GitHub MAE; exact run unresolved.
+  sha256:
+    configs/md17/base.yml: 06d370b7a52f9549bd85fc021c615a99fd44d5bf512e7c4843f3a4e9fc603ae6
+    configs/md17/gemnet-T.yml: d95090f726c9bdce5f5d0376f71e916051807b852ceb25553203d86f929eaf7b
+    configs/md17/gemnet-T-scale.json: b237f00f7c79ac3a24483af9dea5a08362b2852fc398b9feabcbaa75aefb6ced
+    configs/simulate/naphthalene.yml: 7d2a669300f70753502dacee2db269107e83866b6376f94e44fd738375e5ff39
+  observable_code_sha256: c0a0b4330db83861bf0a135ec8518528aca44b92be82e3ccee1e02c80dfc0364
+data:
+  kind: original_MD17_not_rMD17
+  archive: https://zenodo.org/records/7196767
+  root: /vol/data/forces_not_enough/md17
+  molecule: naphthalene
+  train: 9500
+  validation: 500
+  test: 10000
+  upstream_loader_train: 9499
+  upstream_loader_validation: 499
+  upstream_loader_test: 9999
+  loader_note: released LMDB length stores the last index; unmodified upstream loader
+    omits one record per split. Preserved for protocol reproduction.
+  archive_md5_verified: 2f895e74a32793e37da43b961ce8edb2
+  full_reference_frames: 326250
+  full_reference_url: https://www.quantum-machine.org/gdml/data/npz/md17_naphthalene.npz
+  full_reference_sha256: 8939b910d1e91870db7515baa9d49d23169fdf8108687c4c0659afe38a6f053d
+  full_reference_split_crosscheck: passed
+  split_random_state: 123
+  energy_units: eV
+  force_units: eV/Angstrom
+training:
+  model_seed: 0
+  model_seed_provenance: upstream CLI default; original reported checkpoint seed not
+    established
+  run_dir: /vol/results/reproduce/fane_gemnet_t_naphthalene
+  identifier: seed0
+  paper_max_epochs: 2000
+  upstream_yaml_max_epochs: 10000
+  early_stopping_time_s: 604800
+  evaluation_checkpoint: checkpoints/best_checkpoint.pt
+  checkpoint_weights: upstream EMA export, not our best_training_checkpoint.pt
+  checkpoint_selection_caveat: upstream update_best also saves on worsening MAE;
+    filename does not establish best-validation selection. Actual published checkpoint
+    provenance remains unverified; see docs/fane_reproduction.md November 26 audit.
+evaluation:
+  replicas:
+  - seed: 123
+    init_idx: 857
+  - seed: 124
+    init_idx: 4385
+  - seed: 125
+    init_idx: 1428
+  - seed: 126
+    init_idx: 6672
+  - seed: 127
+    init_idx: 4367
+  replica_provenance: local predeclared choices; paper specifies five random test
+    starts, not these exact seeds/indices
+  horizon_ps: 300
+  time_step_fs: 0.5
+  save_every_steps: 100
+  bond_deviation_threshold_A: 0.5
+  criterion: first saved frame with max bonded absolute length deviation from equilibrium
+    mean > threshold
+  equilibrium_reference: mean bond lengths over the full original MD17 reference trajectory,
+    matching authors observable.ipynb (not our training-only mean)
+  report: individual first-failure times, censored flags, mean and SD across five
+    replicas
+  expected_reference_only:
+    force_mae_meV_A: 1.5
+    stability_mean_ps: 8
+    stability_sd_ps: 2
+  upstream_runtime_stop: temperature outside 0.1–100000 K; do not call this the paper
+    bond-failure time
+  topology: ASE NeighborList(natural_cutoffs(first_simulation_frame), self_interaction=False),
+    other defaults unchanged; freeze discovered pairs per trajectory
+  distance: authors distance_pbc with 30 Angstrom cubic cell
+  analysis_source: MD17 section of pinned observable.ipynb; preserve and audit frame/log
+    alignment
+environment_reference:
+  python: 3.9.11
+  torch: 1.11.0+cu113
+  cuda: '11.3'
+  pyg: 2.0.5.dev20220418 (pyg-nightly, pinned by authors README)
+  ase: authors README nightly/master, not a uniquely pinned version
+  paper_gpu: V100 PCIe
+  pilot_gpu: NVIDIA A100-SXM4-80GB; hardware differs from paper
+environment_pilot:
+  python: 3.9.23
+  modal_host_python: '3.11'
+  torch: 1.11.0+cu113
+  pyg: 2.0.5.dev20220418
+  ase: 3.22.1
+  cusparse_cuda_11_3: 11.6.0.109
+  cudart_cuda_11_3: 11.3.109
+timing_pilot:
+  app_id: ap-6Z5bqxkgwjrM0ZVsRCTJBk
+  cpu_verification_app_id: ap-rpHM9Qu10g0XtfaQ62YLDc
+  apps_stopped: true
+  artifacts: /vol/results/reproduce/fane_gemnet_t_naphthalene/pilot_seed0_retry1
+  epochs: 1
+  updates: 9499
+  upstream_loop_s: 1362.63454580307
+  training_process_s: 1380.069746182
+  gpu_function_s: 1381.67043413
+  prior_failed_gpu_function_s: 2.478763411
+  cumulative_recorded_gpu_function_s: 1384.149197541
+  gpu_compute_estimate_usd: 0.9605995431
+  validation_force_mae_eV_A: 0.01764286431527957
+  validation_energy_mae_eV: 0.04821361472945892
+  cpu_ase_checkpoint_reload: passed
+  optimizer_states_finite_and_steps_verified: true
+  md_steps: 0
+  margin_updates: 0
+  convergence_demonstrated: false
+md_diagnostic:
+  status: completed_horizon_reached_no_failure
+  app_id: ap-9Ye6V7M34Q53qG3zRA2OPj
+  app_stopped: true
+  checkpoint: pilot_seed0_retry1/md17-naphthalene_10k_gemnet_t_pilot_seed0/checkpoints/best_checkpoint.pt
+  checkpoint_training_epochs: 1
+  requested_seed: 123
+  init_idx: 857
+  initialization: preserve upstream seed_everywhere, calculator reseed from training
+    config, then MaxwellBoltzmannDistribution; save actual momenta
+  max_ps: 20
+  gpu_timeout_s: 1800
+  internal_wall_stop_s: 1650
+  save_every_steps: 100
+  failure_threshold_A: 0.5
+  failure_detector_note: same notebook geometry criterion, including terminal frame;
+    audit separately reports literal notebook result, which omits terminal frame
+  training_updates: 0
+  full_benchmark: false
+  simulated_ps: 20.0
+  md_steps: 40000
+  saved_frames: 401
+  first_bond_failure_ps: null
+  right_censored: true
+  max_bond_deviation_A: 0.21694536483529459
+  max_deviation_at_ps: 18.7
+  elapsed_s: 1106.792315375
+  gpu_compute_estimate_usd: 0.76811386687025
+  failure_pairs: 0
+  audit: passed
+  checkpoint_sha256: a4052ed4efc2ac6451655fa9cb4410e8a5e11c63ff891aac7836343f8782f9ae
+budget:
+  launch_authorized: false
+  one_epoch_pilot_authorized: true
+  pilot_gpu_timeout_s: 3300
+  pilot_subprocess_stop_s: 3150
+  pilot_prior_attempt_reserved_s: 300
+  pilot_retries: 0
+  training_gpu_hours_measured: true
+  measured_scope: one epoch only; convergence cost unknown
+  a100_80gb_usd_per_second: 0.000694
+  a100_40gb_usd_per_second: 0.000583
+  pricing_checked_local_date: '2026-11-25'
+  gpu_only_scenarios:
+  - hours: 12
+    A100_80GB_usd: 29.98
+    A100_40GB_usd: 25.19
+  - hours: 24
+    A100_80GB_usd: 59.96
+    A100_40GB_usd: 50.37
+  - hours: 72
+    A100_80GB_usd: 179.88
+    A100_40GB_usd: 151.11
+  - hours: 168
+    A100_80GB_usd: 419.73
+    A100_40GB_usd: 352.6
+  execution_cap: pilot completed under capped budget; full-training cloud cap is not
+    configured or authorized. Scientific seven-day stop is epoch-boundary based.
+open_items:
+- Reconcile October 2024 corrected manuscript with arXiv v2 results; the current OpenReview
+  PDF was inaccessible.
+- Full reference and capped-run bond audit are verified, but the one-epoch diagnostic
+  produced no failures through 20 ps. The full five-trajectory benchmark remains unrun.
+- Agree a full-training execution budget using measured pilot throughput; convergence
+  duration remains unknown. Do not launch full training or sweeps yet.
+- MD17 is described as nonperiodic in the paper, but upstream uses a 30 Angstrom box
+  with PBC flags; preserve/audit actual source behavior rather than silently substitute.
