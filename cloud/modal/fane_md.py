@@ -1,8 +1,9 @@
 """Fu et al. stability evaluation (scripts/fane_md.py) of Stage A and Stage B checkpoints, every
 (variant, model seed, replica) in parallel.
 
-    modal run --detach cloud/modal/fane_md.py --molecule naphthalene --seeds 0,1,2 --lams 0,0.003
-    MLIP_GPU=A10G modal run --detach cloud/modal/fane_md.py ...   # default T4
+    modal run --detach cloud/modal/fane_md.py::main --molecule naphthalene --seeds 0,1,2 --lams 0,0.003
+    MLIP_GPU=A10G modal run --detach cloud/modal/fane_md.py::main ...   # default T4
+    modal run cloud/modal/fane_md.py::report --molecule naphthalene      # mean ± SD table
 
 Stage A: results/checkpoints/fane_seed<seed>/<model>/ (cloud/modal/fane_train.py). Stage B (--lams):
 the sweep's ckpt.pt under results/sweeps/<sweep>/. Missing checkpoints are skipped, and finished
@@ -68,6 +69,43 @@ def launch(molecule: str, model: str, seeds: list, lams: list, sweep: str):
     for job, res in zip(jobs, md.starmap(jobs, return_exceptions=True)):
         if isinstance(res, Exception):
             print("FAILED", job[2], repr(res))
+
+
+@app.function(volumes={"/vol": volume}, timeout=600)
+def summarize(molecule: str, model: str = "schnet") -> str:
+    """Fu et al.'s metric per variant: time to first bond failure (ps), mean ± SD over replicas.
+    A run that ends without failure counts as max_ps (censored, Fu et al. report 300 for these);
+    a temperature-guard or numerical stop counts as failing at the time it stopped."""
+    import json
+    import statistics
+
+    root = VOL / f"fu_md/{molecule}_{model}"
+    rows, out = {}, [f"# Fu et al. stability: {molecule} / {model}", "",
+                     "| variant | seed | replicas | failed | time to failure, ps (mean ± SD) |", "|---|---|---|---|---|"]
+    for res in sorted(root.glob("*_seed*/rep*/result.json")):
+        r = json.loads(res.read_text())
+        t = r["first_failure_ps"] if r["first_failure_ps"] is not None else r["simulated_ps"]
+        rows.setdefault(res.parent.parent.name, []).append((t, r["status"] != "horizon_reached"))
+    pooled = {}
+    for run, v in rows.items():
+        variant, seed = run.rsplit("_seed", 1)
+        pooled.setdefault(variant, []).extend(v)
+        ts = [t for t, _ in v]
+        out.append(f"| {variant} | {seed} | {len(v)} | {sum(f for _, f in v)} | "
+                   f"{statistics.mean(ts):.1f} ± {statistics.stdev(ts) if len(ts) > 1 else 0:.1f} |")
+    for variant, v in pooled.items():
+        ts = [t for t, _ in v]
+        out.append(f"| **{variant}** | all | {len(v)} | {sum(f for _, f in v)} | "
+                   f"**{statistics.mean(ts):.1f} ± {statistics.stdev(ts) if len(ts) > 1 else 0:.1f}** |")
+    text = "\n".join(out)
+    (root / "summary.md").write_text(text + "\n")
+    volume.commit()
+    return text
+
+
+@app.local_entrypoint()
+def report(molecule: str = "naphthalene", model: str = "schnet"):
+    print(summarize.remote(molecule, model))
 
 
 @app.local_entrypoint()
