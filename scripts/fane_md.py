@@ -22,6 +22,7 @@ from fane_md_smoke import THRESHOLD, DT_PS, SAVE_EVERY, distance_pbc, deviations
 DATA = Path('/vol/data/forces_not_enough/md17')
 RAW_URL = 'https://www.quantum-machine.org/gdml/data/npz/md17_{molecule}.npz'
 KCAL_TO_EV = 1 / 23.06052
+RAW_NAME = {'salicylic_acid': 'salicylic'}  # sGDML file names that differ from the archive's
 
 
 def reference(molecule, atoms):
@@ -36,7 +37,7 @@ def reference(molecule, atoms):
     raw_path = DATA / f'md17_{molecule}.npz'
     if not raw_path.exists():
         tmp = raw_path.with_name(f'{raw_path.name}.{os.getpid()}.part')
-        urllib.request.urlretrieve(RAW_URL.format(molecule=molecule), tmp)
+        urllib.request.urlretrieve(RAW_URL.format(molecule=RAW_NAME.get(molecule, molecule)), tmp)
         tmp.replace(raw_path)
     raw = np.load(raw_path)
     for split in ('train', 'val', 'test'):
@@ -71,7 +72,8 @@ def run(molecule, model_dir, out, seed, init_idx, max_ps=300., weights=None):
         print(f'done already: {out}')
         return
     out.mkdir(parents=True, exist_ok=True)
-    for stale in ('bond_progress.jsonl', 'progress.json'):  # an interrupted attempt restarts from zero
+    # an interrupted attempt restarts from zero; upstream Simulator appends to atoms.traj / thermo.log
+    for stale in ('bond_progress.jsonl', 'progress.json', 'atoms.traj', 'thermo.log'):
         (out / stale).unlink(missing_ok=True)
     started = time.monotonic()
     os.chdir('/opt/MDsim')

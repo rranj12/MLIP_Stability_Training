@@ -4,6 +4,7 @@
     modal run --detach cloud/modal/fane_md.py::main --molecule naphthalene --seeds 0,1,2 --lams 0,0.003
     MLIP_GPU=A10G modal run --detach cloud/modal/fane_md.py::main ...   # default T4
     modal run cloud/modal/fane_md.py::report --molecule naphthalene      # mean ± SD table
+    modal run cloud/modal/fane_md.py::hr_report                          # h(r) error, as Fu et al.
 
 Stage A: results/checkpoints/fane_seed<seed>/<model>/ (cloud/modal/fane_train.py). Stage B (--lams):
 the sweep's ckpt.pt under results/sweeps/<sweep>/. Missing checkpoints are skipped, and finished
@@ -25,6 +26,7 @@ from fane_pilot import LOCAL, PYTHON, image, volume  # noqa: E402
 PROTOCOL = "configs/reproduce/fane_gemnet_t_naphthalene/protocol.yml"  # the five replicas
 image = (image.add_local_python_source("fane_pilot")
          .add_local_file(LOCAL / "scripts/fane_md.py", "/opt/fane_md.py")
+         .add_local_file(LOCAL / "scripts/fane_hr.py", "/opt/fane_hr.py")
          .add_local_file(LOCAL / PROTOCOL, "/opt/protocol.yml"))
 app = modal.App("fane-md17-md", image=image)
 VOL = Path("/vol/results")
@@ -101,6 +103,18 @@ def summarize(molecule: str, model: str = "schnet") -> str:
     (root / "summary.md").write_text(text + "\n")
     volume.commit()
     return text
+
+
+@app.function(volumes={"/vol": volume}, timeout=3 * 3600, cpu=8, memory=32768)
+def hr(molecule: str, model: str = "schnet"):
+    """h(r) error of every finished run (scripts/fane_hr.py) -> results/fu_md/<molecule>_<model>/hr.json."""
+    subprocess.run([PYTHON, "/opt/fane_hr.py", molecule, str(VOL / f"fu_md/{molecule}_{model}")], check=True)
+    volume.commit()
+
+
+@app.local_entrypoint()
+def hr_report(molecules: str = "naphthalene,aspirin", model: str = "schnet"):
+    list(hr.starmap([(m, model) for m in molecules.split(",")]))
 
 
 @app.local_entrypoint()
