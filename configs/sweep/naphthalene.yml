@@ -1,0 +1,35 @@
+# Lambda selection on naphthalene with Fu et al.'s data (original MD17, 9,500 / 500 / 10,000) and
+# Stage A from cloud/modal/fane_train.py. Final numbers use Fu et al.'s MD protocol, not `final`.
+includes:
+  - lambda.yml
+
+name: naphthalene_fu
+
+datasets:
+  md17_fu:                         # cloud/modal/fane_pilot.py::prepare
+    data: {src: data/forces_not_enough, name: md17, size: 10k}
+    train: {config: configs/margin/base.yml}
+    select_eval: {config: configs/eval/rmd17_500K.yml}
+    final_eval: {config: configs/eval/rmd17_500K.yml}
+    tune_split:
+      n_frames: 1000
+      backfill:                    # archive has no raw indices; used frames are matched by coordinates
+        path: data/forces_not_enough/md17/md17_{molecule}.npz
+        url: https://www.quantum-machine.org/gdml/data/npz/md17_{molecule}.npz
+        keys: {z: z, R: R, E: E, F: F}
+        unit: kcal/mol
+
+defaults:
+  dataset: md17_fu
+  pretrained_dir: results/checkpoints/fane_seed{seed}
+  train:
+    overrides:
+      optim: {reuse_stage_a_state: false}   # upstream MDsim saves no optimizer state for the best weights
+
+systems:
+  - {molecule: naphthalene, model: schnet}
+  # - {molecule: naphthalene, model: gemnet_t}
+
+select:
+  mode: per_system
+  criterion: bond_only             # Fu et al. criterion: bond deviation > 0.5 Å

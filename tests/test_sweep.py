@@ -180,3 +180,12 @@ def test_select_end_to_end_and_final_lock(tmp_path, monkeypatch):
     sel.write_text(json.dumps({**json.loads(sel.read_text()), "selected": {"aspirin_schnet": 1e-2}}))
     with pytest.raises(SystemExit):  # the test set was already used with another selection
         sw.lock_final(cfg)
+
+
+def test_used_by_positions_matches_float32_copies():
+    from mlipstab.data.tune import used_by_positions
+    rng = np.random.default_rng(0)
+    raw = rng.normal(size=(2000, 18, 3))
+    idx = rng.choice(2000, 300, replace=False)
+    stored = raw[idx].astype(np.float32).astype(np.float64)  # archives may store float32
+    assert np.array_equal(used_by_positions(raw, [stored[:100], stored[100:]]), np.sort(idx))

@@ -1,0 +1,8 @@
+# Same sweep on aspirin (Fu et al.: SchNet 26 ± 23 ps; StABlE's benchmark molecule).
+includes:
+  - naphthalene.yml
+
+name: aspirin_fu
+
+systems:
+  - {molecule: aspirin, model: schnet}

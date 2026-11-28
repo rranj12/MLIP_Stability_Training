@@ -121,7 +121,12 @@ def load_raw(backfill, molecule):
     """(z, R, E, F) in eV and eV/Å from the raw file named by a `tune_split.backfill` spec."""
     from mlipstab.units import EV_TO_KCAL_MOL
 
-    raw = np.load(ROOT / backfill["path"].format(molecule=molecule))
+    path = ROOT / backfill["path"].format(molecule=molecule)
+    if not path.exists() and "url" in backfill:
+        import urllib.request
+        path.parent.mkdir(parents=True, exist_ok=True)
+        urllib.request.urlretrieve(backfill["url"].format(molecule=molecule), path)
+    raw = np.load(path)
     k = backfill["keys"]
     scale = {"kcal/mol": 1 / EV_TO_KCAL_MOL, "eV": 1.0}[backfill["unit"]]
     return (raw[k["z"]].astype(np.int64), raw[k["R"]],
@@ -130,7 +135,7 @@ def load_raw(backfill, molecule):
 
 def prepare_tune(s, seed=0):
     """Ensure <split dir>/tune exists. Prep scripts write it; `backfill` builds it for older data."""
-    from mlipstab.data.tune import tune_pool, write_tune
+    from mlipstab.data.tune import tune_pool, used_by_positions, write_tune
 
     base, spec = split_dir(s), s["tune_split"]
     if (base / "tune" / "nequip_npz.npz").exists():
@@ -139,11 +144,13 @@ def prepare_tune(s, seed=0):
     if "backfill" not in spec:
         raise FileNotFoundError(f"{base / 'tune'} is missing; rerun the dataset's prep script "
                                 "or set tune_split.backfill for this dataset")
-    if not (base / "splits.npy").exists():
-        raise FileNotFoundError(f"{base} is not prepared; run the dataset's prep script first")
-    splits = np.load(base / "splits.npy", allow_pickle=True).item()
     z, R, E, F = load_raw(spec["backfill"], s["molecule"])
-    used = np.concatenate([splits["train"], splits["val"], splits["test"]])
+    if (base / "splits.npy").exists():
+        splits = np.load(base / "splits.npy", allow_pickle=True).item()
+        used = np.concatenate([splits["train"], splits["val"], splits["test"]])
+    else:  # splits without raw indices (Fu et al.'s archive): find the used frames by coordinates
+        splits = {}
+        used = used_by_positions(R, [np.load(base / sp / "nequip_npz.npz")["R"] for sp in ("train", "val", "test")])
     idx = tune_pool(len(R), used, spec["n_frames"], seed=seed)
     write_tune(base, idx, z, R, E, F)
     np.save(base / "splits", {**splits, "tune": idx})
